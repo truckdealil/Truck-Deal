@@ -1,0 +1,42 @@
+[
+  {
+    "id": "driver_1",
+    "fullName": "יוסי לוי",
+    "phone": "052-8765432",
+    "region": "מרכז והשרון",
+    "truckType": "משאית 7.5 טון + רמפה הידראולית",
+    "rating": 4.9,
+    "completedMoves": 142,
+    "status": "active"
+  },
+  {
+    "id": "driver_2",
+    "fullName": "אבי כהן",
+    "phone": "054-1234567",
+    "region": "גוש דן וירושלים",
+    "truckType": "משאית 12 טון + מנוף קבועה קומה 6",
+    "rating": 4.8,
+    "completedMoves": 98,
+    "status": "active"
+  },
+  {
+    "id": "driver_3",
+    "fullName": "אמיר מסארווה",
+    "phone": "050-9988776",
+    "region": "צפון וחיפה",
+    "truckType": "מסחרית גדולה (ספרינטר) 3.5 טון",
+    "rating": 4.95,
+    "completedMoves": 210,
+    "status": "active"
+  },
+  {
+    "id": "driver_4",
+    "fullName": "שמעון אבוטבול",
+    "phone": "053-4455667",
+    "region": "דרום ובאר שבע",
+    "truckType": "משאית 15 טון + נגרר ומנוף 30 מטר",
+    "rating": 4.7,
+    "completedMoves": 85,
+    "status": "active"
+  }
+]

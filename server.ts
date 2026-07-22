@@ -1,0 +1,1508 @@
+import express from 'express';
+import path from 'path';
+import fs from 'fs';
+import dotenv from 'dotenv';
+import { createServer as createViteServer } from 'vite';
+import { GoogleGenAI } from '@google/genai';
+
+// Load environment variables
+dotenv.config();
+
+const app = express();
+const PORT = 3000;
+
+// Increase payload limits for Base64 image transfers
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Ensure data directory exists
+const DATA_DIR = path.join(process.cwd(), 'data');
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR);
+}
+
+const MOVES_FILE = path.join(DATA_DIR, 'moves.json');
+const LEADS_FILE = path.join(DATA_DIR, 'leads.json');
+const DRIVERS_FILE = path.join(DATA_DIR, 'drivers.json');
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const TRUCKS_FILE = path.join(DATA_DIR, 'trucks.json');
+const SHIFTS_FILE = path.join(DATA_DIR, 'shifts.json');
+const CHATS_FILE = path.join(DATA_DIR, 'chats.json');
+
+// Helper to read database
+const readDatabase = <T>(filePath: string, defaultValue: any = []): T[] => {
+  try {
+    if (!fs.existsSync(filePath)) {
+      fs.writeFileSync(filePath, JSON.stringify(defaultValue, null, 2));
+      return defaultValue;
+    }
+    const data = fs.readFileSync(filePath, 'utf-8');
+    return JSON.parse(data) as T[];
+  } catch (error) {
+    console.error(`Error reading database file ${filePath}:`, error);
+    return defaultValue;
+  }
+};
+
+// Helper to write database
+const writeDatabase = <T>(filePath: string, data: T[]): void => {
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  } catch (error) {
+    console.error(`Error writing database file ${filePath}:`, error);
+  }
+};
+
+// Initialize Gemini SDK with API Key
+let ai: GoogleGenAI | null = null;
+if (process.env.GEMINI_API_KEY) {
+  try {
+    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    console.log('Gemini AI SDK initialized successfully');
+  } catch (err) {
+    console.error('Failed to initialize Gemini AI SDK:', err);
+  }
+} else {
+  console.warn('GEMINI_API_KEY is not defined. AI functionality will run in fallback/simulation mode.');
+}
+
+// Helper to call Gemini with a fallback model (e.g. gemini-3.1-flash-lite) if the primary model is busy or unavailable
+const callGeminiWithFallback = async (contents: string, primaryModel: string = 'gemini-3.5-flash', fallbackModel: string = 'gemini-3.1-flash-lite') => {
+  if (!ai) {
+    throw new Error('Gemini client not initialized');
+  }
+
+  try {
+    const response = await ai.models.generateContent({
+      model: primaryModel,
+      contents: contents,
+    });
+    return response;
+  } catch (error: any) {
+    console.warn(`Primary Gemini model (${primaryModel}) failed or unavailable:`, error.message || error);
+    
+    // Attempt the fallback model
+    try {
+      console.log(`Attempting fallback model: ${fallbackModel}...`);
+      const response = await ai.models.generateContent({
+        model: fallbackModel,
+        contents: contents,
+      });
+      return response;
+    } catch (fallbackError: any) {
+      console.error(`Fallback Gemini model (${fallbackModel}) also failed:`, fallbackError.message || fallbackError);
+      throw error; // Re-throw original error if fallback also fails
+    }
+  }
+};
+
+// Google Apps Script Webhook URL
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxFuwvPovPthoFJ8E237r8Tdo2PuDbOw9FvjtDCyr2kHgkQX-VG8lglUej7zqFv0FsI/exec';
+
+// Send lead/move data to Google Apps Script
+const sendToGoogleAppsScript = async (payload: any) => {
+  try {
+    console.log('Sending data to Google Apps Script Webhook...');
+    const response = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    console.log('Google Apps Script response status:', response.status);
+  } catch (error) {
+    console.error('Error sending webhook to Google Apps Script:', error);
+  }
+};
+
+// Send webhook to Make.com (Optional, configurable via environment or database settings)
+const sendToMakeWebhook = async (payload: any) => {
+  let webhookUrl = process.env.MAKE_WEBHOOK_URL;
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      const settingsRaw = fs.readFileSync(SETTINGS_FILE, 'utf-8');
+      if (settingsRaw) {
+        const settings = JSON.parse(settingsRaw);
+        if (settings && settings.makeWebhookUrl) {
+          webhookUrl = settings.makeWebhookUrl;
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error reading settings for Make.com Webhook URL:', err);
+  }
+
+  if (!webhookUrl || webhookUrl.trim() === '' || webhookUrl.includes('your-custom-webhook-endpoint')) {
+    console.log('--- [WHATSAPP & MAKE.COM AUTOMATION SIMULATOR] ---');
+    console.log('Webhook URL not configured. Simulating outgoing WhatsApp notification:');
+    console.log('Payload:', JSON.stringify(payload, null, 2));
+    console.log('--------------------------------------------------');
+    return;
+  }
+
+  try {
+    console.log('Sending webhook payload to Make.com:', webhookUrl);
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    console.log('Make.com response status:', response.status);
+  } catch (error) {
+    console.error('Error sending webhook to Make.com:', error);
+  }
+};
+
+// Helper to log system/whatsapp notifications to the move request object
+const logNotification = (moveId: string, action: string, message: string) => {
+  try {
+    const moves = readDatabase<any>(MOVES_FILE);
+    const moveIndex = moves.findIndex((m: any) => m.id === moveId);
+    if (moveIndex !== -1) {
+      if (!moves[moveIndex].notificationsLog) {
+        moves[moveIndex].notificationsLog = [];
+      }
+      moves[moveIndex].notificationsLog.unshift({
+        id: 'notif_' + Math.random().toString(36).substr(2, 9),
+        timestamp: new Date().toISOString(),
+        action,
+        message
+      });
+      writeDatabase(MOVES_FILE, moves);
+    }
+  } catch (err) {
+    console.error('Error logging notification to move:', err);
+  }
+};
+
+// AI smart quoting with Gemini
+const generateAIAnalysis = async (moveRequest: any): Promise<any> => {
+  if (!ai) {
+    // Fallback if API key is not present
+    const basePrice = 400 + (moveRequest.items.reduce((acc: number, item: any) => acc + (item.quantity * 45), 0));
+    const floorCost = moveRequest.floor * 100;
+    const elevatorDiscount = moveRequest.hasElevator ? 0.75 : 1.35;
+    const estMin = Math.round((basePrice + floorCost) * elevatorDiscount * 0.9);
+    const estMax = Math.round((basePrice + floorCost) * elevatorDiscount * 1.15);
+
+    return {
+      estimatedPriceRange: `₪${estMin} - ₪${estMax}`,
+      difficultyScore: moveRequest.floor > 3 && !moveRequest.hasElevator ? 8 : (moveRequest.items.length > 10 ? 6 : 3),
+      recommendations: [
+        'מומלץ לעטוף מראש מוצרי חשמל ורהיטים בניילון בועות (פצפץ)',
+        moveRequest.floor > 2 && !moveRequest.hasElevator ? 'ההובלה כוללת סחיבה רגלית לקומה גבוהה ללא מעלית - מומלץ לוודא הגעת 3 סבלים לפחות' : 'הבניין מצויד במעלית - יש לוודא שהפריטים הכבדים נכנסים במעלית הנוכחית',
+        moveRequest.craneNeeded === 'yes' ? 'נדרש תיאום מנוף חיצוני מראש עם המועצה/חנייה ייעודית' : 'לא צוין צורך במנוף, אך יש לשים לב למידות חדר המדרגות',
+      ],
+      summary: `הובלת ${moveRequest.moveType === 'apartment' ? 'דירה' : moveRequest.moveType === 'office' ? 'משרד' : 'משלוח'} מ${moveRequest.originAddress} אל ${moveRequest.destAddress}. כמות פריטים: ${moveRequest.items.reduce((acc: number, i: any) => acc + i.quantity, 0)}.`,
+    };
+  }
+
+  try {
+    const itemsDescription = moveRequest.items
+      .map((item: any) => `- ${item.name}: ${item.quantity} יחידות`)
+      .join('\n');
+
+    const prompt = `
+אתה מעריך לוגיסטי וחכם של חברת ההובלות "Truk Dealil IL" (טראק דיל il).
+תפקידך לנתח את פרטי ההובלה הבאים ולספק הצעת מחיר חכמה, ניתוח קושי והמלצות מקצועיות בעברית מלאה.
+
+פרטי ההובלה:
+- סוג ההובלה: ${moveRequest.moveType} (apartment=דירה, office=משרד, delivery=משלוח)
+- כתובת מוצא: ${moveRequest.originAddress}
+- כתובת יעד: ${moveRequest.destAddress}
+- קומה: ${moveRequest.floor}
+- יש מעלית? ${moveRequest.hasElevator ? 'כן' : 'לא'}
+- האם מקרר נכנס במעלית? ${moveRequest.elevatorDetails.fridgeFits ? 'כן' : 'לא'}
+- האם ספה נכנסת במעלית? ${moveRequest.elevatorDetails.sofaFits ? 'כן' : 'לא'}
+- נגישות חנייה למשאית: ${moveRequest.truckAccess} (easy=קלה, medium=בינונית, difficult=קשה, no_parking=אין חנייה קרובה)
+- צורך במנוף: ${moveRequest.craneNeeded} (yes=כן, no=לא, dont_know=לא יודע)
+- הערות לקוח: ${moveRequest.notes || 'אין'}
+
+רשימת פריטים להובלה:
+${itemsDescription}
+
+החזר תשובה אך ורק בפורמט JSON תקני הבא (אל תוסיף שום מילה מחוץ ל-JSON, אל תעטוף בסימוני markdown כמו \`\`\`json):
+{
+  "estimatedPriceRange": "טווח מחיר מוערך בשקלים, לדוגמה '₪1,200 - ₪1,600'",
+  "difficultyScore": מספר בין 1 ל-10 המייצג את רמת קושי ההובלה,
+  "recommendations": ["רשימה של 3-4 המלצות לוגיסטיות חשובות והנחיות לנהג או ללקוח לשמירה על הציוד וייעול העבודה"],
+  "summary": "סיכום תמציתי ומקצועי של ההובלה בעברית"
+}
+`;
+
+    // Call Gemini with Fallback
+    const response = await callGeminiWithFallback(prompt);
+
+    const responseText = response.text || '';
+    // Clean potential markdown wrappers
+    const cleanJson = responseText
+      .replace(/```json/g, '')
+      .replace(/```/g, '')
+      .trim();
+
+    const analysis = JSON.parse(cleanJson);
+    return analysis;
+  } catch (error) {
+    console.error('Error generating AI quote from Gemini:', error);
+    // Fallback in case of failure
+    return {
+      estimatedPriceRange: '₪800 - ₪1,500',
+      difficultyScore: 5,
+      recommendations: [
+        'מומלץ לארוז שבירים בארגזים מרופדים',
+        'יש לבדוק גישת חנייה נוחה ביום ההובלה בשתי הכתובות',
+      ],
+      summary: 'הובלת ציוד - ניתוח בסיסי',
+    };
+  }
+};
+
+/* --- API ROUTES FIRST --- */
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', time: new Date().toISOString() });
+});
+
+// GET all move requests
+app.get('/api/moves', (req, res) => {
+  const moves = readDatabase(MOVES_FILE);
+  res.json(moves);
+});
+
+// GET a single move request
+app.get('/api/moves/:id', (req, res) => {
+  const moves = readDatabase<any>(MOVES_FILE);
+  const move = moves.find((m) => m.id === req.params.id);
+  if (!move) {
+    return res.status(404).json({ error: 'ההובלה לא נמצאה' });
+  }
+
+  // Clone to avoid modifying the in-memory cache directly
+  const responseMove = { ...move };
+
+  // Helper to mask addresses
+  const maskAddress = (addr: string) => {
+    if (!addr) return '';
+    const parts = addr.split(',');
+    if (parts.length > 0) {
+      return `${parts[0].trim()} (כתובת מלאה חסומה - תיחשף לאחר תשלום מקדמה 🔒)`;
+    }
+    return 'מיקום נעול - מוגן מפני מעקף פלטפורמה';
+  };
+
+  // Payment lock enforcement: if pending_payment and not accessed by admin
+  const isLocked = responseMove.paymentStatus === 'pending_payment' && req.query.role !== 'admin';
+
+  if (isLocked) {
+    responseMove.clientPhone = 'נעול - ממתין להסדר תשלום ומקדמה ע״י הלקוח 🔒';
+    responseMove.clientEmail = 'נעול - ממתין להסדר תשלום ומקדמה ע״י הלקוח 🔒';
+    responseMove.clientName = responseMove.clientName ? `${responseMove.clientName.split(' ')[0]} (שם משפחה נעול)` : 'לקוח מוגן';
+    responseMove.originAddress = maskAddress(responseMove.originAddress);
+    responseMove.destAddress = maskAddress(responseMove.destAddress);
+    responseMove.isPaymentLocked = true;
+  } else {
+    responseMove.isPaymentLocked = false;
+  }
+
+  res.json(responseMove);
+});
+
+// POST a new move request (Client submits)
+app.post('/api/moves', async (req, res) => {
+  try {
+    const moves = readDatabase<any>(MOVES_FILE);
+    const newMove = {
+      id: 'move_' + Math.random().toString(36).substr(2, 9),
+      ...req.body,
+      createdAt: new Date().toISOString(),
+      status: 'new', // starts as new
+      paymentStatus: 'pending_payment',
+      clientApprovedForBilling: false, // Must be approved by Admin later
+      driverBids: [],
+    };
+
+    // Run smart AI Analysis
+    console.log('Running smart AI quotation generation...');
+    const aiAnalysis = await generateAIAnalysis(newMove);
+    newMove.aiAnalysis = aiAnalysis;
+
+    // Save to server-side DB
+    moves.unshift(newMove);
+    writeDatabase(MOVES_FILE, moves);
+
+    // Formulate driver bid link inside the application
+    const appUrl = process.env.APP_URL || `http://localhost:${PORT}`;
+    const bidLink = `${appUrl}?view=driver&moveId=${newMove.id}`;
+
+    // Send payload to Google Apps Script (includes base64 images if present)
+    const appsScriptPayload = {
+      action: 'create_move',
+      moveId: newMove.id,
+      clientName: newMove.clientName,
+      clientPhone: newMove.clientPhone,
+      clientEmail: newMove.clientEmail,
+      originAddress: newMove.originAddress,
+      destAddress: newMove.destAddress,
+      moveDate: newMove.moveDate,
+      moveTime: newMove.moveTime,
+      moveType: newMove.moveType,
+      floor: newMove.floor,
+      hasElevator: newMove.hasElevator,
+      truckAccess: newMove.truckAccess,
+      craneNeeded: newMove.craneNeeded,
+      items: newMove.items,
+      notes: newMove.notes || '',
+      imagesCount: newMove.images ? newMove.images.length : 0,
+      images: newMove.images || [], // base64 arrays to save in Google Drive
+      estimatedPriceRange: aiAnalysis.estimatedPriceRange,
+      difficultyScore: aiAnalysis.difficultyScore,
+      summary: aiAnalysis.summary,
+      bidLink: bidLink,
+      googleDriveFolderId: '1_9vxDiPP51-GtUEeqsojmp5d1z7D8UoG'
+    };
+    
+    // Fire and forget integration calls so response is lightning fast
+    sendToGoogleAppsScript(appsScriptPayload);
+
+    // Send to Make Webhook to notify drivers in WhatsApp with exact requested structure
+    sendToMakeWebhook({
+      moveId: newMove.id,
+      clientName: newMove.clientName,
+      origin: newMove.originAddress,
+      destination: newMove.destAddress,
+      craneNeeded: newMove.craneNeeded === 'yes' ? 'כן' : (newMove.craneNeeded === 'no' ? 'לא' : 'לא ידוע'),
+      driverOfferLink: `https://truk-dealil.il/driver/quote/${newMove.id}`,
+      message: `הובלה חדשה פורסמה ב-Truk Dealil IL! 🚚\n\nמ:${newMove.originAddress} ל:${newMove.destAddress}\nתאריך: ${newMove.moveDate}\nפרטים: ${aiAnalysis.summary}\n\nלהגשת הצעת מחיר לנהג לחץ על הקישור:\n${bidLink}`
+    });
+
+    res.status(201).json(newMove);
+  } catch (error) {
+    console.error('Error creating move request:', error);
+    res.status(500).json({ error: 'שגיאה בשמירת בקשת ההובלה' });
+  }
+});
+
+// POST submit a driver bid
+app.post('/api/moves/:id/bids', (req, res) => {
+  try {
+    const moves = readDatabase<any>(MOVES_FILE);
+    const moveIndex = moves.findIndex((m) => m.id === req.params.id);
+    if (moveIndex === -1) {
+      return res.status(404).json({ error: 'ההובלה לא נמצאה' });
+    }
+
+    const { driverName, driverPhone, bidAmount, estimatedDuration, notes } = req.body;
+    if (!driverName || !driverPhone || !bidAmount) {
+      return res.status(400).json({ error: 'נא למלא את כל שדות החובה להגשת ההצעה' });
+    }
+
+    const newBid = {
+      id: 'bid_' + Math.random().toString(36).substr(2, 9),
+      driverName,
+      driverPhone,
+      bidAmount: Number(bidAmount),
+      estimatedDuration,
+      notes,
+      submittedAt: new Date().toISOString(),
+      status: 'pending' as const,
+    };
+
+    moves[moveIndex].driverBids.push(newBid);
+    // Move status switches to bidding
+    if (moves[moveIndex].status === 'new') {
+      moves[moveIndex].status = 'bidding';
+    }
+
+    writeDatabase(MOVES_FILE, moves);
+
+    // Notify Google Apps Script about the new bid
+    sendToGoogleAppsScript({
+      action: 'add_bid',
+      moveId: req.params.id,
+      bidId: newBid.id,
+      driverName: newBid.driverName,
+      driverPhone: newBid.driverPhone,
+      bidAmount: newBid.bidAmount,
+      notes: newBid.notes || '',
+    });
+
+    res.status(201).json(newBid);
+  } catch (error) {
+    console.error('Error submitting driver bid:', error);
+    res.status(500).json({ error: 'שגיאה בהגשת הצעת המחיר לנהג' });
+  }
+});
+
+// POST Approve driver's bid by admin (Admin approves driver bid before client notification)
+app.post('/api/moves/:id/bids/:bidId/approve', (req, res) => {
+  try {
+    const moves = readDatabase<any>(MOVES_FILE);
+    const moveIndex = moves.findIndex((m) => m.id === req.params.id);
+    if (moveIndex === -1) {
+      return res.status(404).json({ error: 'ההובלה לא נמצאה' });
+    }
+
+    const move = moves[moveIndex];
+    const bidIndex = move.driverBids.findIndex((b: any) => b.id === req.params.bidId);
+    if (bidIndex === -1) {
+      return res.status(404).json({ error: 'הצעת הנהג לא נמצאה' });
+    }
+
+    // Set all bids to rejected, approve the selected one
+    move.driverBids.forEach((b: any, index: number) => {
+      move.driverBids[index].status = index === bidIndex ? 'approved' : 'rejected';
+    });
+
+    move.finalApprovedBidId = req.params.bidId;
+    move.status = 'Approved'; // Update move status to Approved
+
+    writeDatabase(MOVES_FILE, moves);
+
+    const approvedBid = move.driverBids[bidIndex];
+
+    // Notify apps script
+    sendToGoogleAppsScript({
+      action: 'approve_bid',
+      moveId: move.id,
+      bidId: approvedBid.id,
+      driverName: approvedBid.driverName,
+      driverPhone: approvedBid.driverPhone,
+      bidAmount: approvedBid.bidAmount,
+    });
+
+    // Notify via WhatsApp/Make with the requested text
+    const messageText = `ההובלה שלך אושרה! הנהג שנבחר הוא ${approvedBid.driverName}, מחיר סופי: ₪${approvedBid.bidAmount}. לחץ כאן לביצוע תשלום ואבטחת ההזמנה`;
+    sendToMakeWebhook({
+      action: 'bid_approved_notify_client',
+      moveId: move.id,
+      clientName: move.clientName,
+      clientPhone: move.clientPhone,
+      approvedPrice: approvedBid.bidAmount,
+      driverName: approvedBid.driverName,
+      message: messageText
+    });
+
+    logNotification(move.id, 'bid_approved', `הצעת המחיר של המוביל ${approvedBid.driverName} על סך ₪${approvedBid.bidAmount} אושרה ע״י המנהל. נשלחה הודעת WhatsApp ללקוח עם קישור מעקב חי והסדרת תשלום.`);
+
+    res.json({ success: true, move });
+  } catch (error) {
+    console.error('Error approving driver bid:', error);
+    res.status(500).json({ error: 'שגיאה באישור הצעת המחיר' });
+  }
+});
+
+// POST Client digital signature and driver matching proposal (Get Taxi Matchmaking Engine)
+app.post('/api/moves/:id/match-driver', (req, res) => {
+  try {
+    const moves = readDatabase<any>(MOVES_FILE);
+    const moveIndex = moves.findIndex((m) => m.id === req.params.id);
+    if (moveIndex === -1) {
+      return res.status(404).json({ error: 'ההובלה לא נמצאה' });
+    }
+
+    const { driverId, driverName, driverPhone, bidAmount, clientSignature } = req.body;
+    const move = moves[moveIndex];
+
+    // Create a virtual bid representing this matched proposal
+    const matchedBid = {
+      id: 'bid_' + Math.random().toString(36).substr(2, 9),
+      driverId: driverId || 'driver_matched',
+      driverName: driverName || 'חכמת ועאלי',
+      driverPhone: driverPhone || '050-1234567',
+      bidAmount: Number(bidAmount) || 1850,
+      estimatedDuration: '3-4 שעות',
+      notes: 'שידוך חכם מהיר - הצעת מחיר חתומה ומאושרת ע״י הלקוח דיגיטלית.',
+      status: 'approved',
+      createdAt: new Date().toISOString()
+    };
+
+    // Update move with matched driver and signature details
+    move.driverBids = [matchedBid];
+    move.finalApprovedBidId = matchedBid.id;
+    move.status = 'Approved'; // Advanced to Approved status
+    move.clientSignature = clientSignature || 'נחתם דיגיטלית בטאצ׳';
+    move.assignedDriverId = driverId || 'driver_matched';
+    move.assignedDriverName = driverName || 'חכמת ועאלי';
+    move.assignedDriverPhone = driverPhone || '050-1234567';
+
+    writeDatabase(MOVES_FILE, moves);
+
+    // Notify apps script & make webhooks
+    sendToGoogleAppsScript({
+      action: 'client_match_and_sign',
+      moveId: move.id,
+      driverName: matchedBid.driverName,
+      bidAmount: matchedBid.bidAmount,
+      signature: move.clientSignature
+    });
+
+    sendToMakeWebhook({
+      action: 'driver_matched_and_signed',
+      moveId: move.id,
+      clientName: move.clientName,
+      driverName: matchedBid.driverName,
+      approvedPrice: matchedBid.bidAmount,
+      message: `שידוך נהג והצעה חתומה התקבלו להובלה #${move.id}! המוביל הנבחר: ${matchedBid.driverName}, מחיר: ₪${matchedBid.bidAmount}.`
+    });
+
+    logNotification(move.id, 'driver_matched_signed', `שידוך נהג בוצע בהצלחה! הלקוח אישר וחתם דיגיטלית על הצעת המוביל ${matchedBid.driverName} על סך ₪${matchedBid.bidAmount}.`);
+
+    res.json({ success: true, move });
+  } catch (error) {
+    console.error('Error matching driver & signing proposal:', error);
+    res.status(500).json({ error: 'שגיאה בשידוך הנהג ובחתימה הדיגיטלית' });
+  }
+});
+
+// POST Admin billing approval and payment status updates
+app.post('/api/moves/:id/payment', (req, res) => {
+  try {
+    const moves = readDatabase<any>(MOVES_FILE);
+    const moveIndex = moves.findIndex((m) => m.id === req.params.id);
+    if (moveIndex === -1) {
+      return res.status(404).json({ error: 'ההובלה לא נמצאה' });
+    }
+
+    const { paymentStatus, clientApprovedForBilling, status } = req.body;
+    
+    // Safety payment lock checks
+    const targetStatus = status || moves[moveIndex].status;
+    const targetPaymentStatus = paymentStatus || moves[moveIndex].paymentStatus;
+    
+    if (targetStatus === 'approved_for_driver' && targetPaymentStatus === 'pending_payment') {
+      return res.status(400).json({ 
+        error: 'חסימת אבטחה: לא ניתן לשחרר או לאשר את ההובלה לנהג כל עוד סטטוס התשלום הוא ממתין לתשלום (Pending). הלקוח נדרש להסדיר תשלום מקדמה, תשלום מלא, או להיות לקוח מוסדי מאושר בשוטף + 30.' 
+      });
+    }
+
+    if (paymentStatus) {
+      moves[moveIndex].paymentStatus = paymentStatus;
+    }
+    
+    if (typeof clientApprovedForBilling === 'boolean') {
+      moves[moveIndex].clientApprovedForBilling = clientApprovedForBilling;
+      
+      // Safety operational logic: Prevent final confirmation of transport/status to driver ('approved_for_driver') unless billing is approved
+      if (status === 'approved_for_driver' && !clientApprovedForBilling) {
+        return res.status(400).json({ 
+          error: 'מנגנון אבטחה תפעולי: לא ניתן לשחרר/לאשר את ההובלה לנהג אלא אם התקבל אישור מנהל לחיוב הלקוח במערכת!' 
+        });
+      }
+    }
+
+    if (status) {
+      // If we are changing status to 'approved_for_driver', we must double check client billing approval
+      if (status === 'approved_for_driver' && !moves[moveIndex].clientApprovedForBilling) {
+        return res.status(400).json({ 
+          error: 'מנגנון אבטחה תפעולי: לא ניתן לשחרר/לאשר את ההובלה לנהג אלא אם התקבל אישור מנהל לחיוב הלקוח במערכת!' 
+        });
+      }
+      moves[moveIndex].status = status;
+    }
+
+    writeDatabase(MOVES_FILE, moves);
+
+    // If status became approved_for_driver, log it
+    if (status === 'approved_for_driver') {
+      logNotification(moves[moveIndex].id, 'approved_for_driver', `ההובלה שוחררה בהצלחה לנהג המורשה ${moves[moveIndex].assignedDriverName || 'מוביל מורשה'}. הנהג קיבל התראת שיבוץ בוואטסאפ עם פרטי הכתובות.`);
+    }
+
+    // If payment status became paid (paid_full or paid_deposit)
+    if (moves[moveIndex].paymentStatus === 'paid_full' || moves[moveIndex].paymentStatus === 'paid_deposit') {
+      const appUrl = process.env.APP_URL || `http://localhost:3000`;
+      const approvedBid = moves[moveIndex].driverBids.find((b: any) => b.id === moves[moveIndex].finalApprovedBidId) || moves[moveIndex].driverBids.find((b: any) => b.status === 'approved');
+      
+      sendToMakeWebhook({
+        action: 'payment_success_notify',
+        moveId: moves[moveIndex].id,
+        clientName: moves[moveIndex].clientName,
+        clientPhone: moves[moveIndex].clientPhone,
+        amountPaid: approvedBid ? approvedBid.bidAmount : 1500,
+        driverName: approvedBid ? approvedBid.driverName : 'מוביל מורשה',
+        driverPhone: approvedBid ? approvedBid.driverPhone : 'טרם הוקצה',
+        trackingLink: `${appUrl}/?view=tracking&moveId=${moves[moveIndex].id}`,
+        invoiceLink: `${appUrl}/?view=tracking&moveId=${moves[moveIndex].id}&showReceipt=true`,
+        message: `שלום ${moves[moveIndex].clientName}, התשלום עבור הובלה #${moves[moveIndex].id} התקבל בהצלחה! 🎉\n\nהמוביל שנבחר הוא: ${approvedBid ? approvedBid.driverName : 'מוביל מורשה'} (${approvedBid ? approvedBid.driverPhone : ''}).\nפרטי ההובלה שוחררו כעת ומופיעים בדף המעקב החי שלך כולל חשבונית מס וקבלה דיגיטלית:\n${appUrl}/?view=tracking&moveId=${moves[moveIndex].id}`
+      });
+
+      const paymentLabel = moves[moveIndex].paymentStatus === 'paid_full' ? 'שולם במלואו' : 'שולמה מקדמה שריון';
+      logNotification(moves[moveIndex].id, 'payment_success', `הסדר תשלום בוצע בהצלחה! סטטוס תשלום עודכן ל: ${paymentLabel}. קבלה דיגיטלית ואישור הזמנה נשלחו ללקוח בוואטסאפ.`);
+    }
+
+    // Notify apps script
+    sendToGoogleAppsScript({
+      action: 'update_payment',
+      moveId: moves[moveIndex].id,
+      paymentStatus: moves[moveIndex].paymentStatus,
+      clientApprovedForBilling: moves[moveIndex].clientApprovedForBilling,
+      status: moves[moveIndex].status,
+    });
+
+    res.json({ success: true, move: moves[moveIndex] });
+  } catch (error) {
+    console.error('Error updating payment/billing status:', error);
+    res.status(500).json({ error: 'שגיאה בעדכון פרטי תשלום ואבטחה' });
+  }
+});
+
+// POST complete move with digital signature and delivery note
+app.post('/api/moves/:id/complete', (req, res) => {
+  try {
+    const moves = readDatabase<any>(MOVES_FILE);
+    const moveIndex = moves.findIndex((m) => m.id === req.params.id);
+    if (moveIndex === -1) {
+      return res.status(404).json({ error: 'ההובלה לא נמצאה' });
+    }
+
+    const { signatureImage, confirmedItems, customerName, feedbackScore, notes, cargoPhotos } = req.body;
+    
+    moves[moveIndex].status = 'completed';
+    moves[moveIndex].deliveryNote = {
+      signatureImage, // base64 representation of digital signature canvas
+      signatureDataUrl: signatureImage,
+      signedBy: customerName,
+      signedAt: new Date().toISOString(),
+      checklistResults: confirmedItems ? confirmedItems.map((item: any) => ({ itemId: item.id, name: item.name, verified: item.confirmed })) : [],
+      feedbackRating: feedbackScore,
+      feedbackText: notes,
+      confirmedItems,
+      customerName,
+      feedbackScore,
+      notes,
+      cargoPhotos: cargoPhotos || [],
+      completedAt: new Date().toISOString()
+    };
+
+    writeDatabase(MOVES_FILE, moves);
+
+    // Call Google Apps Script with action 'complete_move'
+    sendToGoogleAppsScript({
+      action: 'complete_move',
+      moveId: req.params.id,
+      customerName: customerName || moves[moveIndex].clientName,
+      signatureImage,
+      confirmedItems,
+      feedbackScore,
+      notes,
+      cargoPhotos: cargoPhotos || [],
+      completedAt: new Date().toISOString()
+    });
+
+    // Send webhook to Make.com/WhatsApp
+    sendToMakeWebhook({
+      action: 'move_completed',
+      moveId: req.params.id,
+      clientName: moves[moveIndex].clientName,
+      clientPhone: moves[moveIndex].clientPhone,
+      message: `ההובלה שלכם הושלמה בהצלחה! 🏁 תודה שבחרתם בטראק דיל il. חתמתם על תעודת המסירה הדיגיטלית והיא נשמרה בבטחה.`
+    });
+
+    logNotification(req.params.id, 'move_completed', `ההובלה הושלמה בהצלחה בשטח! הלקוח חתם על תעודת המסירה הדיגיטלית. חשבונית מס דיגיטלית וקבלה נשלחו ללקוח בוואטסאפ.`);
+
+    res.json({ success: true, move: moves[moveIndex] });
+  } catch (error) {
+    console.error('Error completing move:', error);
+    res.status(500).json({ error: 'שגיאה בסגירת ההובלה ואישור המסירה' });
+  }
+});
+
+// POST update driver status and log notification
+app.post('/api/moves/:id/driver-status', (req, res) => {
+  try {
+    const moves = readDatabase<any>(MOVES_FILE);
+    const moveIndex = moves.findIndex((m) => m.id === req.params.id);
+    if (moveIndex === -1) {
+      return res.status(404).json({ error: 'ההובלה לא נמצאה' });
+    }
+
+    const { driverStatus } = req.body;
+    if (!driverStatus) {
+      return res.status(400).json({ error: 'חסר סטטוס נהג' });
+    }
+
+    moves[moveIndex].driverStatus = driverStatus;
+    
+    // Log status transitions and trigger WhatsApp alerts
+    let messageText = '';
+    let actionName = 'driver_status_update';
+
+    if (driverStatus === 'en_route_to_origin') {
+      messageText = `הנהג ${moves[moveIndex].assignedDriverName || 'המוביל'} יצא לדרך אל כתובת המוצא שלכם! 🚚`;
+      actionName = 'driver_en_route';
+    } else if (driverStatus === 'loading') {
+      messageText = `ההעמסה שלכם התחילה! הנהג והסבלים מעמיסים את הציוד בבטחה במשאית. 📦`;
+      actionName = 'loading_started';
+    } else if (driverStatus === 'en_route_to_dest') {
+      messageText = `העמסת התכולה הסתיימה בהצלחה! משאית המוביל יצאה לדרך אל כתובת היעד שלכם. 🗺️`;
+      actionName = 'en_route_to_destination';
+    } else if (driverStatus === 'delivered') {
+      messageText = `המשאית הגיעה ליעד! מתחילים כעת בפריקה וסידור הרהיטים בביתכם החדש. 🏁`;
+      actionName = 'delivered_destination';
+    }
+
+    if (messageText) {
+      // Log it
+      if (!moves[moveIndex].notificationsLog) {
+        moves[moveIndex].notificationsLog = [];
+      }
+      moves[moveIndex].notificationsLog.unshift({
+        id: 'notif_' + Math.random().toString(36).substr(2, 9),
+        timestamp: new Date().toISOString(),
+        action: actionName,
+        message: messageText
+      });
+
+      // Send webhook to Make.com/WhatsApp
+      sendToMakeWebhook({
+        action: actionName,
+        moveId: req.params.id,
+        clientName: moves[moveIndex].clientName,
+        clientPhone: moves[moveIndex].clientPhone,
+        driverName: moves[moveIndex].assignedDriverName,
+        message: messageText
+      });
+    }
+
+    writeDatabase(MOVES_FILE, moves);
+    res.json({ success: true, move: moves[moveIndex] });
+  } catch (error) {
+    console.error('Error updating driver status:', error);
+    res.status(500).json({ error: 'שגיאה בעדכון סטטוס הנהג' });
+  }
+});
+
+// POST save customer feedback post-move and trigger admin review if needed
+app.post('/api/moves/:id/feedback', (req, res) => {
+  try {
+    const moves = readDatabase<any>(MOVES_FILE);
+    const moveIndex = moves.findIndex((m) => m.id === req.params.id);
+    if (moveIndex === -1) {
+      return res.status(404).json({ error: 'ההובלה לא נמצאה' });
+    }
+
+    const { rating, feedbackText } = req.body;
+    if (!rating) {
+      return res.status(400).json({ error: 'דירוג שביעות רצון הוא חובה' });
+    }
+
+    // Save to the delivery note or a dedicated feedback field
+    if (!moves[moveIndex].deliveryNote) {
+      moves[moveIndex].deliveryNote = {
+        signedBy: moves[moveIndex].clientName,
+        signatureDataUrl: '',
+        signedAt: new Date().toISOString(),
+        checklistResults: []
+      };
+    }
+
+    moves[moveIndex].deliveryNote.feedbackRating = Number(rating);
+    moves[moveIndex].deliveryNote.feedbackText = feedbackText || '';
+    
+    // Handle low rating routing
+    if (Number(rating) <= 3) {
+      moves[moveIndex].requiresAdminReview = true;
+      moves[moveIndex].adminReviewTicketId = 'TKT-' + Math.floor(100000 + Math.random() * 900000);
+      moves[moveIndex].adminReviewStatus = 'open';
+    } else {
+      moves[moveIndex].requiresAdminReview = false;
+    }
+
+    // Log notification that review was submitted
+    if (!moves[moveIndex].notificationsLog) {
+      moves[moveIndex].notificationsLog = [];
+    }
+    moves[moveIndex].notificationsLog.unshift({
+      id: 'notif_' + Math.random().toString(36).substr(2, 9),
+      timestamp: new Date().toISOString(),
+      action: 'feedback_received',
+      message: `התקבל משוב לקוח חדש! דירוג: ${rating} ★. הערות: "${feedbackText || 'ללא הערות'}"`
+    });
+
+    writeDatabase(MOVES_FILE, moves);
+
+    // Notify Google Apps Script
+    sendToGoogleAppsScript({
+      action: 'feedback_submitted',
+      moveId: req.params.id,
+      rating,
+      feedbackText,
+      requiresAdminReview: moves[moveIndex].requiresAdminReview || false,
+      adminReviewTicketId: moves[moveIndex].adminReviewTicketId || ''
+    });
+
+    res.json({ success: true, move: moves[moveIndex] });
+  } catch (error) {
+    console.error('Error submitting feedback:', error);
+    res.status(500).json({ error: 'שגיאה בשמירת המשוב' });
+  }
+});
+
+// POST resolve low-rating admin review ticket
+app.post('/api/moves/:id/resolve-ticket', (req, res) => {
+  try {
+    const moves = readDatabase<any>(MOVES_FILE);
+    const moveIndex = moves.findIndex((m) => m.id === req.params.id);
+    if (moveIndex === -1) {
+      return res.status(404).json({ error: 'ההובלה לא נמצאה' });
+    }
+
+    moves[moveIndex].adminReviewStatus = 'resolved';
+    moves[moveIndex].adminReviewTicketResolved = true;
+
+    // Log the resolution event in notification history ledger
+    if (!moves[moveIndex].notificationsLog) {
+      moves[moveIndex].notificationsLog = [];
+    }
+    moves[moveIndex].notificationsLog.unshift({
+      id: 'notif_' + Math.random().toString(36).substr(2, 9),
+      timestamp: new Date().toISOString(),
+      action: 'ticket_resolved',
+      message: `כרטיס טיפול דחוף (${moves[moveIndex].adminReviewTicketId}) נסגר וסומן כפתור בהצלחה ע״י מנהל קשרי לקוחות.`
+    });
+
+    writeDatabase(MOVES_FILE, moves);
+    res.json({ success: true, move: moves[moveIndex] });
+  } catch (error) {
+    console.error('Error resolving ticket:', error);
+    res.status(500).json({ error: 'שגיאה בסגירת כרטיס הטיפול' });
+  }
+});
+
+// POST leads from CRM Landing Form
+app.post('/api/leads', async (req, res) => {
+  try {
+    const leads = readDatabase<any>(LEADS_FILE);
+    const { fullName, phone, email, companyName, notes } = req.body;
+
+    if (!fullName || !phone || !email) {
+      return res.status(400).json({ error: 'שדות שם מלא, טלפון ואימייל הם חובה' });
+    }
+
+    const newLead = {
+      id: 'lead_' + Math.random().toString(36).substr(2, 9),
+      fullName,
+      phone,
+      email,
+      companyName: companyName || '',
+      notes: notes || '',
+      createdAt: new Date().toISOString(),
+    };
+
+    leads.unshift(newLead);
+    writeDatabase(LEADS_FILE, leads);
+
+    // Send immediately to Google Apps Script
+    sendToGoogleAppsScript({
+      action: 'create_lead',
+      leadId: newLead.id,
+      fullName: newLead.fullName,
+      phone: newLead.phone,
+      email: newLead.email,
+      companyName: newLead.companyName,
+      notes: newLead.notes,
+    });
+
+    res.status(201).json(newLead);
+  } catch (error) {
+    console.error('Error creating CRM lead:', error);
+    res.status(500).json({ error: 'שגיאה ברישום הליד' });
+  }
+});
+
+// GET CRM leads (for Admin)
+app.get('/api/leads', (req, res) => {
+  const leads = readDatabase(LEADS_FILE);
+  res.json(leads);
+});
+
+// GET chats
+app.get('/api/chats', (req, res) => {
+  const chats = readDatabase<any>(CHATS_FILE);
+  res.json(chats);
+});
+
+// GET chats by jobId
+app.get('/api/chats/:jobId', (req, res) => {
+  const chats = readDatabase<any>(CHATS_FILE);
+  const filtered = chats.filter((c: any) => c.jobId === req.params.jobId);
+  res.json(filtered);
+});
+
+// POST send message
+app.post('/api/chats', (req, res) => {
+  try {
+    const chats = readDatabase<any>(CHATS_FILE);
+    const { jobId, sender, senderName, message, gps, photo, isUrgent } = req.body;
+
+    if (!jobId || !sender || !senderName) {
+      return res.status(400).json({ error: 'שדות חובה חסרים לשליחת הודעה' });
+    }
+
+    const newMessage = {
+      id: 'msg_' + Math.random().toString(36).substr(2, 9),
+      jobId,
+      sender,
+      senderName,
+      message: message || '',
+      timestamp: new Date().toISOString(),
+      gps: gps || null,
+      photo: photo || null,
+      readByAdmin: sender === 'admin',
+      readByDriver: sender === 'driver',
+      isUrgent: isUrgent || false,
+      pushNotificationDispatched: false,
+      pushLog: null as any
+    };
+
+    // Simulate OneSignal Push Notification trigger
+    if (isUrgent) {
+      newMessage.pushNotificationDispatched = true;
+      newMessage.pushLog = {
+        oneSignalId: 'onesignal_' + Math.random().toString(36).substr(2, 9),
+        targetRole: sender === 'admin' ? 'driver' : 'admin',
+        title: `הודעה דחופה מ-${senderName}`,
+        body: message || 'עדכון מיקום או תכולה חדש מהשטח',
+        timestamp: new Date().toISOString(),
+        status: 'Sent (Delivered via OneSignal REST API Gateway)'
+      };
+      console.log(`[OneSignal Push Dispatched] To ${newMessage.pushLog.targetRole}: ${newMessage.pushLog.title} - ${newMessage.pushLog.body}`);
+    }
+
+    chats.push(newMessage);
+    writeDatabase(CHATS_FILE, chats);
+
+    res.status(201).json(newMessage);
+  } catch (error) {
+    console.error('Error creating chat message:', error);
+    res.status(500).json({ error: 'שגיאה בשליחת ההודעה' });
+  }
+});
+
+// POST mark messages as read
+app.post('/api/chats/mark-read', (req, res) => {
+  try {
+    const chats = readDatabase<any>(CHATS_FILE);
+    const { jobId, role } = req.body; // role: 'admin' or 'driver'
+
+    if (!jobId || !role) {
+      return res.status(400).json({ error: 'חסרים נתונים לסימון כנקרא' });
+    }
+
+    let modified = false;
+    chats.forEach((c: any) => {
+      if (c.jobId === jobId) {
+        if (role === 'admin' && !c.readByAdmin) {
+          c.readByAdmin = true;
+          modified = true;
+        }
+        if (role === 'driver' && !c.readByDriver) {
+          c.readByDriver = true;
+          modified = true;
+        }
+      }
+    });
+
+    if (modified) {
+      writeDatabase(CHATS_FILE, chats);
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error marking messages as read:', error);
+    res.status(500).json({ error: 'שגיאה בעדכון סטטוס קריאה' });
+  }
+});
+
+// GET active drivers list (for Admin/bidding)
+app.get('/api/drivers', (req, res) => {
+  try {
+    const drivers = readDatabase<any>(DRIVERS_FILE, [
+      {
+        id: 'driver_1',
+        fullName: 'יוסי לוי',
+        phone: '052-8765432',
+        region: 'מרכז והשרון',
+        truckType: 'משאית 7.5 טון + רמפה הידראולית',
+        rating: 4.9,
+        completedMoves: 142,
+        status: 'active'
+      },
+      {
+        id: 'driver_2',
+        fullName: 'אבי כהן',
+        phone: '054-1234567',
+        region: 'גוש דן וירושלים',
+        truckType: 'משאית 12 טון + מנוף קבועה קומה 6',
+        rating: 4.8,
+        completedMoves: 98,
+        status: 'active'
+      }
+    ]);
+    res.json(drivers);
+  } catch (error) {
+    console.error('Error fetching drivers:', error);
+    res.status(500).json({ error: 'שגיאה בטעינת רשימת הנהגים' });
+  }
+});
+
+// POST save/update a driver
+app.post('/api/drivers', (req, res) => {
+  try {
+    const drivers = readDatabase<any>(DRIVERS_FILE, []);
+    const driverData = req.body;
+
+    if (!driverData.fullName || !driverData.phone) {
+      return res.status(400).json({ error: 'שם מלא וטלפון הם שדות חובה' });
+    }
+
+    if (driverData.id) {
+      // Update existing driver
+      const idx = drivers.findIndex((d) => d.id === driverData.id);
+      if (idx !== -1) {
+        drivers[idx] = { ...drivers[idx], ...driverData };
+      } else {
+        drivers.push(driverData);
+      }
+    } else {
+      // Create new driver
+      const newDriver = {
+        id: 'driver_' + Math.random().toString(36).substr(2, 9),
+        fullName: driverData.fullName,
+        phone: driverData.phone,
+        region: driverData.region || 'ארצי',
+        truckType: driverData.truckType || 'משאית כללית',
+        rating: 5.0,
+        completedMoves: 0,
+        status: 'active'
+      };
+      drivers.push(newDriver);
+    }
+
+    writeDatabase(DRIVERS_FILE, drivers);
+    res.json({ success: true, drivers });
+  } catch (error) {
+    console.error('Error saving driver:', error);
+    res.status(500).json({ error: 'שגיאה בשמירת פרטי הנהג' });
+  }
+});
+
+// DELETE a driver
+app.delete('/api/drivers/:id', (req, res) => {
+  try {
+    let drivers = readDatabase<any>(DRIVERS_FILE, []);
+    drivers = drivers.filter((d) => d.id !== req.params.id);
+    writeDatabase(DRIVERS_FILE, drivers);
+    res.json({ success: true, drivers });
+  } catch (error) {
+    console.error('Error deleting driver:', error);
+    res.status(500).json({ error: 'שגיאה במחיקת הנהג' });
+  }
+});
+
+// GET application settings
+app.get('/api/settings', (req, res) => {
+  try {
+    let settings: any = { makeWebhookUrl: '' };
+    if (fs.existsSync(SETTINGS_FILE)) {
+      settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
+    }
+    res.json(settings);
+  } catch (error) {
+    console.error('Error fetching settings:', error);
+    res.status(500).json({ error: 'שגיאה בטעינת הגדרות מערכת' });
+  }
+});
+
+// POST update application settings
+app.post('/api/settings', (req, res) => {
+  try {
+    const newSettings = req.body;
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(newSettings, null, 2));
+    res.json({ success: true, settings: newSettings });
+  } catch (error) {
+    console.error('Error updating settings:', error);
+    res.status(500).json({ error: 'שגיאה בעדכון הגדרות מערכת' });
+  }
+});
+
+// GET trucks
+app.get('/api/trucks', (req, res) => {
+  try {
+    const trucks = readDatabase<any>(TRUCKS_FILE, [
+      {
+        id: 'truck_1',
+        model: 'איסוזו סומו 12 טון (מנוף)',
+        licensePlate: '77-888-99',
+        type: 'crane',
+        status: 'available',
+        testDate: '2026-11-15',
+        insuranceDate: '2027-02-28'
+      },
+      {
+        id: 'truck_2',
+        model: 'וולוו FE משאית משטח כבדה',
+        licensePlate: '11-222-33',
+        type: 'flatbed',
+        status: 'available',
+        testDate: '2026-10-02',
+        insuranceDate: '2027-01-15'
+      },
+      {
+        id: 'truck_3',
+        model: 'דאף LF עם דופן הידראולית',
+        licensePlate: '55-666-77',
+        type: 'hydraulic_ramp',
+        status: 'available',
+        testDate: '2026-09-12',
+        insuranceDate: '2026-12-20'
+      }
+    ]);
+    res.json(trucks);
+  } catch (error) {
+    console.error('Error reading trucks:', error);
+    res.status(500).json({ error: 'שגיאה בקריאת נתוני המשאיות' });
+  }
+});
+
+// POST truck
+app.post('/api/trucks', (req, res) => {
+  try {
+    const trucks = readDatabase<any>(TRUCKS_FILE);
+    const { model, licensePlate, type, status, testDate, insuranceDate } = req.body;
+    
+    if (!model || !licensePlate) {
+      return res.status(400).json({ error: 'נא למלא את כל שדות החובה' });
+    }
+
+    const newTruck = {
+      id: 'truck_' + Math.random().toString(36).substr(2, 9),
+      model,
+      licensePlate,
+      type,
+      status,
+      testDate,
+      insuranceDate
+    };
+
+    trucks.push(newTruck);
+    writeDatabase(TRUCKS_FILE, trucks);
+    res.status(201).json({ success: true, trucks });
+  } catch (error) {
+    console.error('Error adding truck:', error);
+    res.status(500).json({ error: 'שגיאה בהוספת משאית' });
+  }
+});
+
+// PUT truck
+app.put('/api/trucks/:id', (req, res) => {
+  try {
+    const trucks = readDatabase<any>(TRUCKS_FILE);
+    const truckIndex = trucks.findIndex((t: any) => t.id === req.params.id);
+    if (truckIndex === -1) {
+      return res.status(404).json({ error: 'משאית לא נמצאה' });
+    }
+
+    const { model, licensePlate, type, status, testDate, insuranceDate } = req.body;
+    trucks[truckIndex] = {
+      ...trucks[truckIndex],
+      model: model || trucks[truckIndex].model,
+      licensePlate: licensePlate || trucks[truckIndex].licensePlate,
+      type: type || trucks[truckIndex].type,
+      status: status || trucks[truckIndex].status,
+      testDate: testDate || trucks[truckIndex].testDate,
+      insuranceDate: insuranceDate || trucks[truckIndex].insuranceDate
+    };
+
+    writeDatabase(TRUCKS_FILE, trucks);
+    res.json({ success: true, trucks });
+  } catch (error) {
+    console.error('Error updating truck:', error);
+    res.status(500).json({ error: 'שגיאה בעדכון המשאית' });
+  }
+});
+
+// DELETE truck
+app.delete('/api/trucks/:id', (req, res) => {
+  try {
+    let trucks = readDatabase<any>(TRUCKS_FILE);
+    trucks = trucks.filter((t: any) => t.id !== req.params.id);
+    writeDatabase(TRUCKS_FILE, trucks);
+    res.json({ success: true, trucks });
+  } catch (error) {
+    console.error('Error deleting truck:', error);
+    res.status(500).json({ error: 'שגיאה במחיקת המשאית' });
+  }
+});
+
+// GET shifts
+app.get('/api/shifts', (req, res) => {
+  try {
+    const shifts = readDatabase<any>(SHIFTS_FILE, []);
+    res.json(shifts);
+  } catch (error) {
+    console.error('Error reading shifts:', error);
+    res.status(500).json({ error: 'שגיאה בקריאת נתוני המשמרות' });
+  }
+});
+
+// POST shift (upsert)
+app.post('/api/shifts', (req, res) => {
+  try {
+    const shifts = readDatabase<any>(SHIFTS_FILE, []);
+    const { driverId, driverName, date, status, shiftType, notes } = req.body;
+
+    if (!driverId || !date) {
+      return res.status(400).json({ error: 'שגיאה בפרמטרי השיבוץ' });
+    }
+
+    const existingIndex = shifts.findIndex((s: any) => s.driverId === driverId && s.date === date);
+    
+    const shiftData = {
+      id: existingIndex !== -1 ? shifts[existingIndex].id : 'shift_' + Math.random().toString(36).substr(2, 9),
+      driverId,
+      driverName,
+      date,
+      status,
+      shiftType,
+      notes: notes || ''
+    };
+
+    if (existingIndex !== -1) {
+      shifts[existingIndex] = shiftData;
+    } else {
+      shifts.push(shiftData);
+    }
+
+    writeDatabase(SHIFTS_FILE, shifts);
+    res.json({ success: true, shifts });
+  } catch (error) {
+    console.error('Error saving shift:', error);
+    res.status(500).json({ error: 'שגיאה בעדכון המשמרת' });
+  }
+});
+
+// POST Assign Resource to move
+app.post('/api/moves/:id/assign', (req, res) => {
+  try {
+    const moves = readDatabase<any>(MOVES_FILE);
+    const moveIndex = moves.findIndex((m: any) => m.id === req.params.id);
+    if (moveIndex === -1) {
+      return res.status(404).json({ error: 'ההובלה לא נמצאה' });
+    }
+
+    const { driverId, truckId, notes } = req.body;
+    if (!driverId || !truckId) {
+      return res.status(400).json({ error: 'שם הנהג ומזהה משאית הם חובה לשיוך' });
+    }
+
+    const move = moves[moveIndex];
+    
+    // Read drivers list to get the driver full details
+    const drivers = readDatabase<any>(DRIVERS_FILE, []);
+    const driver = drivers.find((d: any) => d.id === driverId);
+    
+    // Read trucks list to get truck full details
+    const trucks = readDatabase<any>(TRUCKS_FILE, []);
+    const truck = trucks.find((t: any) => t.id === truckId);
+
+    // Update truck status to on_route
+    if (truck) {
+      const updatedTrucks = trucks.map((t: any) => t.id === truckId ? { ...t, status: 'on_route' } : t);
+      writeDatabase(TRUCKS_FILE, updatedTrucks);
+    }
+
+    // Update move allocation info
+    move.assignedDriverId = driverId;
+    move.assignedDriverName = driver ? driver.fullName : 'נהג משויך';
+    move.assignedDriverPhone = driver ? driver.phone : '';
+    move.assignedTruckId = truckId;
+    move.assignedTruckModel = truck ? truck.model : 'משאית משויכת';
+    move.assignedTruckLicense = truck ? truck.licensePlate : '';
+    move.assignedTruckType = truck ? truck.type : '';
+    move.status = 'approved_for_driver'; // Progress status
+    move.operationalNotes = notes || '';
+
+    writeDatabase(MOVES_FILE, moves);
+
+    // Notify Apps script
+    sendToGoogleAppsScript({
+      action: 'assign_resource',
+      moveId: move.id,
+      driverId,
+      driverName: move.assignedDriverName,
+      truckId,
+      truckModel: move.assignedTruckModel,
+      notes: notes || ''
+    });
+
+    // Notify driver & client via simulated WhatsApp
+    sendToMakeWebhook({
+      action: 'resource_assigned_notify_driver',
+      moveId: move.id,
+      driverName: move.assignedDriverName,
+      driverPhone: move.assignedDriverPhone,
+      truckModel: move.assignedTruckModel,
+      licensePlate: move.assignedTruckLicense,
+      clientName: move.clientName,
+      origin: move.originAddress,
+      destination: move.destAddress,
+      message: `הקצאת משאבים חדשה ב-Truk Dealil IL! 🚚\n\nשלום ${move.assignedDriverName}, שויכת בהצלחה להובלה של ${move.clientName} בתאריך ${move.moveDate}.\nכלי רכב משויך: ${move.assignedTruckModel} (${move.assignedTruckLicense}).\nנא לאשר תחילת תנועה בבוקר ההובלה.`
+    });
+
+    res.json({ success: true, move });
+  } catch (error) {
+    console.error('Error assigning resource to move:', error);
+    res.status(500).json({ error: 'שגיאה בשיבוץ המשאבים להובלה' });
+  }
+});
+
+// POST test custom webhook
+app.post('/api/settings/test-webhook', async (req, res) => {
+  try {
+    const { testPayload, webhookUrl } = req.body;
+    const targetUrl = webhookUrl || process.env.MAKE_WEBHOOK_URL;
+    
+    if (!targetUrl || targetUrl.trim() === '' || targetUrl.includes('your-custom-webhook-endpoint')) {
+      return res.status(400).json({ error: 'אנא הגדר תחילה כתובת Webhook תקינה ל-Make.com' });
+    }
+
+    console.log('Sending manual integration test payload to:', targetUrl);
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(testPayload || { test: true, message: 'בדיקת חיבור אוטומטי מטראק דיל IL' }),
+    });
+
+    res.json({ success: true, status: response.status });
+  } catch (error: any) {
+    console.error('Webhook manual test failed:', error);
+    res.status(500).json({ error: `החיבור נכשל: ${error.message}` });
+  }
+});
+
+// AI Concierge Chat History and Real-time Pipelines (Zero-Dummy Data Firebase simulator)
+const CONCIERGE_CHATS_FILE = path.join(DATA_DIR, 'concierge_chats.json');
+
+app.get('/api/concierge/history', (req, res) => {
+  try {
+    const history = readDatabase<any>(CONCIERGE_CHATS_FILE, []);
+    res.json(history);
+  } catch (err) {
+    console.error('Error in concierge history API:', err);
+    res.status(500).json({ error: 'שגיאה בטעינת היסטוריית השיחה' });
+  }
+});
+
+app.post('/api/concierge/chat', async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message) {
+      return res.status(400).json({ error: 'הודעה ריקה אינה חוקית' });
+    }
+
+    const history = readDatabase<any>(CONCIERGE_CHATS_FILE, []);
+    
+    // Save user message
+    const userMsg = {
+      id: 'msg_' + Math.random().toString(36).substr(2, 9),
+      sender: 'user',
+      text: message,
+      timestamp: new Date().toISOString()
+    };
+    history.push(userMsg);
+
+    let aiReply = '';
+    let driveLink = undefined;
+
+    // Check if user is asking about photos, videos, or tour
+    const lowerMessage = message.toLowerCase();
+    const isRequestingMedia = lowerMessage.includes('תמונה') || lowerMessage.includes('סרטון') || lowerMessage.includes('סיור') || lowerMessage.includes('תכולה') || lowerMessage.includes('מדיה');
+
+    if (isRequestingMedia) {
+      aiReply = `העלית קובץ סיור תכולה בהצלחה! המערכת סנכרנה את המדיה ישירות לתיקיית Google Drive המאובטחת של ההובלה שלך להערכת עלויות מדויקת ע״י Truk AI.<br/><br/>🔲 הצג ניתוח עלות הובלה<br/>🔲 שלח הצעה למוביל בוואטסאפ`;
+      driveLink = 'https://drive.google.com/drive/folders/1_9vxDiPP51-GtUEeqsojmp5d1z7D8UoG';
+    } else if (ai) {
+      try {
+        const systemPrompt = `
+You are the Smart AI Concierge of "Truk Dealil IL" (טראק דיל il), the leading logistics and moving marketplace platform in Israel.
+Your role is to assist clients, drivers, and partners in Hebrew with absolute friendliness and high professionalism.
+
+CRITICAL INSTRUCTIONS:
+1. Speak/write ONLY in Hebrew.
+2. Be extremely concise. Your response MUST be up to 1.5 sentences (maximum 25-30 words) for the explanation.
+3. Use clean HTML for formatting (e.g., use <b>bold</b> for key terms and <br/> for line breaks, but never write markdown codeblocks like \`\`\`).
+4. At the end of your response, you MUST append exactly 2 or 3 interactive options starting with the checkbox symbol 🔲 on new lines. The options should let the user continue the conversation.
+   Example options:
+   🔲 כמה עולה הובלת דירה?
+   🔲 איך עובד מכרז הנהגים?
+   🔲 מי הנהג שלי כרגע?
+
+User's input: "${message}"
+`;
+        const response = await callGeminiWithFallback(systemPrompt);
+
+        aiReply = response.text || '';
+        // If the reply does not contain 🔲 buttons, add generic ones
+        if (!aiReply.includes('🔲')) {
+          aiReply += '<br/><br/>🔲 כמה עולה הובלה ממוצעת?<br/>🔲 איך מתחילים מכרז נהגים?';
+        }
+      } catch (err) {
+        console.error('Error calling Gemini for concierge:', err);
+      }
+    }
+
+    // Fallback if Gemini failed or is not configured
+    if (!aiReply) {
+      if (message.includes('כמה עולה') || message.includes('מחיר') || message.includes('עלות')) {
+        aiReply = 'מחיר הובלה ממוצע נע בין <b>₪1,200 ל-₪3,500</b>, בהתאם לנפח התכולה, קומה, קיומה של מעלית וצורך במנוף חיצוני.<br/><br/>🔲 פתח מחשבון הובלה להערכה מדויקת<br/>🔲 כמה עולה הובלה קטנה?';
+      } else if (message.includes('מכרז') || message.includes('איך עובד') || message.includes('איך מתחילים')) {
+        aiReply = 'לאחר הזנת פרטי ההובלה, המערכת מפיצה מכרז חכם לעשרות נהגים מאושרים המגישים הצעות מחיר תחרותיות תוך דקות.<br/><br/>🔲 פתח מחשבון ומכרז<br/>🔲 מי נהגי המשאיות הפעילים?';
+      } else if (message.includes('איפה') || message.includes('מעקב') || message.includes('משאית') || message.includes('נהג')) {
+        aiReply = 'כל המשאיות מצוידות ברכיב <b>GPS מובנה</b>. ניתן לעקוב בזמן אמת אחר מיקום הנהג וההובלה בלשונית "מעקב לקוח חי" ברגע שההובלה מתחילה.<br/><br/>🔲 פתח מעקב לקוח חי 📱<br/>🔲 צור קשר עם מנהל משרד';
+      } else {
+        aiReply = 'ברוך הבא לגרסת היהלום של <b>Truk Dealil IL</b>. אוכל לסייע לך לקבל הצעת מחיר חכמה מבוססת AI, לעקוב אחר נהגים או לחתום על תעודות משלוח.<br/><br/>🔲 כמה עולה הובלת דירה?<br/>🔲 איך עובד מכרז הנהגים?<br/>🔲 צפה בלוח הניהול המרכזי';
+      }
+    }
+
+    const aiMsg = {
+      id: 'msg_' + Math.random().toString(36).substr(2, 9),
+      sender: 'ai',
+      text: aiReply,
+      timestamp: new Date().toISOString()
+    };
+    if (driveLink) {
+      aiMsg['driveLink'] = driveLink;
+    }
+    history.push(aiMsg);
+
+    writeDatabase(CONCIERGE_CHATS_FILE, history);
+    res.json({ reply: aiReply, driveLink });
+  } catch (err) {
+    console.error('Error in concierge chat API:', err);
+    res.status(500).json({ error: 'שגיאה בעיבוד בקשת ה-AI' });
+  }
+});
+
+
+/* --- VITE MIDDLEWARE SETUP --- */
+async function startServer() {
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Truk Dealil IL Fullstack Server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer();

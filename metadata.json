@@ -1,0 +1,6 @@
+{
+  "name": "טראק דיל il - Truk Dealil IL",
+  "description": "פלטפורמת לוגיסטיקה חכמה ומערכת מכרזי הובלות לדירות ומשרדים, הכוללת טופס הצעות מחיר מתקדם, ממשק ניהול ומנגנון תשלומים מאובטח",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
