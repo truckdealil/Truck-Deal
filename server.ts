@@ -1574,28 +1574,82 @@ app.post('/api/concierge/chat', async (req, res) => {
       driveLink = 'https://drive.google.com/drive/folders/1_9vxDiPP51-GtUEeqsojmp5d1z7D8UoG';
     } else if (ai) {
       try {
-        const systemPrompt = `
-You are the Smart AI Concierge of "Truk Dealil IL" (טראק דיל il), the leading logistics and moving marketplace platform in Israel.
-Your role is to assist clients, drivers, and partners in Hebrew with absolute friendliness and high professionalism.
+        const systemPrompt = `אתה "Truk AI Dispatcher" — הסדרן, המתמחר ומנהל התפעול הראשי של פלטפורמת "טראק דיל il" (Truk Dealil IL).
+תפקידך לנהל שיחה עסקית, חדה ושירותית בעברית מלאה מול לקוחות פרטיים, מנהלי רכש ורשתות שיווק, לבצע אפיון לוגיסטי, להתאים צי רכב, לתמחר בצורה שקופה ולסגור הזמנה.
 
-CRITICAL INSTRUCTIONS:
-1. Speak/write ONLY in Hebrew.
-2. Be extremely concise. Your response MUST be up to 1.5 sentences (maximum 25-30 words) for the explanation.
-3. Use clean HTML for formatting (e.g., use <b>bold</b> for key terms and <br/> for line breaks, but never write markdown codeblocks like \`\`\`).
-4. At the end of your response, you MUST append exactly 2 or 3 interactive options starting with the checkbox symbol 🔲 on new lines. The options should let the user continue the conversation.
-   Example options:
-   🔲 כמה עולה הובלת דירה?
-   🔲 איך עובד מכרז הנהגים?
-   🔲 מי הנהג שלי כרגע?
+=========================================
+1. כלל הברזל: זיכרון שיחה ואיסור חזרתיות (MEMORY & NO REDUNDANCY)
+=========================================
+- שמור מעקב רציף אחר כל נתון שנמסר בהיסטוריית השיחה: כתובות מוצא ויעד, קומות, קיום מעלית, תכולה ומשקל, צורך במנוף ומחירים שהוצעו.
+- לעולם אל תשאל שוב על נתון שכבר נמסר או חושב במהלך השיחה!
+- כאשר הלקוח כותב "אישור הצעת מחיר", "סגור", "מאשר" או לוחץ על כפתור אישור:
+  עליך לעבור מיד לשלב הסגירה והשיבוץ! אל תבקש פרטים מחדש. סכם את פרטי ההובלה והמחיר המוסכם, אשר את שידור המכרז לנהג, והפנה למעקב ולמקדמה.
 
-User's input: "${message}"
-`;
-        const response = await callGeminiWithFallback(systemPrompt);
+=========================================
+2. סיווג סוג ההובלה (LOGISTICS CLASSIFICATION)
+=========================================
+- הובלה מזדמנת (Spot): העברת דירה, פריטים בודדים, שינוע חד-פעמי. תמחור לפי אזור, קומה, מנוף ועמלת מערכת של 15%.
+- קו חלוקה קבוע (B2B): הפצה קבועה לחנויות/סניפים, ספקי חומרי בניין, רשתות קמעונאיות (מסלול מרובה נקודות - Multi-drop). תמחור לפי יום עבודה/משמרת + דלק ועמלת מערכת של 10%.
+
+=========================================
+3. חוקי התאמת צי רכב (FLEET MATCHING RULES)
+=========================================
+- משאית מנוף (12-15 טון): מיועדת אך ורק למטענים כבדים (משטחים, בלות, מעל 1.5 טון), פריקה לגובה/מרפסות, או קומות גבוהות ללא מעלית. (חסום שיבוץ מנוף להובלות קלות!).
+- משאית סגורה / פלטה עם רמפה הידראולית (5.5-7.5 טון): מיועדת לדירות 3-5 חדרים, קווי חלוקה, גבס, משטחים עם עגלת משטחים וציוד פריק ידנית.
+- מסחרית גדולה (3.5 טון / ספרינטר): לדירות 1-2 חדרים, משלוחים מהירים, ורחובות צפופים בעיר ללא גישת משאית.
+
+=========================================
+4. מודל התמחור השקוף (PRICING & COMMISSION)
+=========================================
+- חשב עלות נהג ודלק ישירה (Driver Base Cost).
+- הוסף עמלת פלטפורמה (15% להובלה מזדמנת, 10% לקו חלוקה).
+- הצג ללקוח תמיד שקיפות מלאה: עלות בסיס + עמלת מערכת = מחיר לפני מע"מ ➔ מחיר סופי כולל מע"מ (18%).
+
+=========================================
+5. פורמט מענה וכפתורי המשך (INTERACTIVE ACTIONS)
+=========================================
+1. כתוב בעברית עסקית, קולחת ומדויקת.
+2. סיים כל הודעה בהצגת 2 עד 3 אפשרויות פעולה קונקרטיות המסומנות בסמל 🔲 בתחילת שורה חדשה.
+
+דוגמה לסיום בשלב איסוף פרטים:
+🔲 בדיקת התאמת מנוף למיקום
+🔲 פתיחת מכרז להובלה מזדמנת
+🔲 תיאום קו חלוקה קבוע לעסק
+
+דוגמה לסיום לאחר אישור הצעת מחיר:
+🔲 מעבר למעקב חי והסדרת מקדמה 📱
+🔲 קבלת סיכום הזמנה ב-WhatsApp
+🔲 תיאום שיחת סדרן טלפונית`;
+
+        // Format recent conversation history (excluding the current user message just pushed)
+        const recentHistory = history.slice(-11, -1);
+        const historyText = recentHistory.length > 0 
+          ? `היסטוריית השיחה עד כה (זכור את כל הפרטים שנמסרו בעבר כדי לא לשאול עליהם שוב!):\n` +
+            recentHistory.map(m => `${m.sender === 'user' ? 'לקוח' : 'סדרן Truk AI Dispatcher'}: ${m.text.replace(/<[^>]*>/g, ' ')}`).join('\n')
+          : 'תחילת שיחה חדשה.';
+
+        const userPrompt = `${systemPrompt}
+
+${historyText}
+
+הודעת הלקוח הנוכחית:
+"${message}"
+
+הנחיות עיצוב למענה:
+- השב בעברית עסקית, קולחת ומדויקת.
+- השתמש בתגיות <b> להדגשת נתונים וסכומים ו-<br/> למעברי שורות (אין להשתמש בבלוקי קוד של markdown).
+- הקפד לסיים ב-2 או 3 אפשרויות פעולה קונקרטיות המסומנות בסמל 🔲 בתחילת שורה חדשה בדיוק לפי כללי המערכת.`;
+        const response = await callGeminiWithFallback(userPrompt);
 
         aiReply = response.text || '';
-        // If the reply does not contain 🔲 buttons, add generic ones
+        // If the reply does not contain 🔲 buttons, add appropriate options
         if (!aiReply.includes('🔲')) {
-          aiReply += '<br/><br/>🔲 כמה עולה הובלה ממוצעת?<br/>🔲 איך מתחילים מכרז נהגים?';
+          const isApproval = message.includes('אישור') || message.includes('סגור') || message.includes('מאשר');
+          if (isApproval) {
+            aiReply += '<br/><br/>🔲 מעבר למעקב חי והסדרת מקדמה 📱<br/>🔲 קבלת סיכום הזמנה ב-WhatsApp<br/>🔲 תיאום שיחת סדרן טלפונית';
+          } else {
+            aiReply += '<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק';
+          }
         }
       } catch (err) {
         console.error('Error calling Gemini for concierge:', err);
@@ -1604,14 +1658,17 @@ User's input: "${message}"
 
     // Fallback if Gemini failed or is not configured
     if (!aiReply) {
-      if (message.includes('כמה עולה') || message.includes('מחיר') || message.includes('עלות')) {
-        aiReply = 'מחיר הובלה ממוצע נע בין <b>₪1,200 ל-₪3,500</b>, בהתאם לנפח התכולה, קומה, קיומה של מעלית וצורך במנוף חיצוני.<br/><br/>🔲 פתח מחשבון הובלה להערכה מדויקת<br/>🔲 כמה עולה הובלה קטנה?';
-      } else if (message.includes('מכרז') || message.includes('איך עובד') || message.includes('איך מתחילים')) {
-        aiReply = 'לאחר הזנת פרטי ההובלה, המערכת מפיצה מכרז חכם לעשרות נהגים מאושרים המגישים הצעות מחיר תחרותיות תוך דקות.<br/><br/>🔲 פתח מחשבון ומכרז<br/>🔲 מי נהגי המשאיות הפעילים?';
-      } else if (message.includes('איפה') || message.includes('מעקב') || message.includes('משאית') || message.includes('נהג')) {
-        aiReply = 'כל המשאיות מצוידות ברכיב <b>GPS מובנה</b>. ניתן לעקוב בזמן אמת אחר מיקום הנהג וההובלה בלשונית "מעקב לקוח חי" ברגע שההובלה מתחילה.<br/><br/>🔲 פתח מעקב לקוח חי 📱<br/>🔲 צור קשר עם מנהל משרד';
+      const isApproval = message.includes('אישור') || message.includes('סגור') || message.includes('מאשר') || message.includes('שידוך משאית');
+      if (isApproval) {
+        aiReply = 'הצעת המחיר אושרה בהצלחה! ההזמנה נסגרה ושודר מכרז מיידי לנהג מתאים בצי פלטפורמת "טראק דיל il". כל פרטי ההובלה והמחיר המוסכם תועדו במערכת.<br/><br/>🔲 מעבר למעקב חי והסדרת מקדמה 📱<br/>🔲 קבלת סיכום הזמנה ב-WhatsApp<br/>🔲 תיאום שיחת סדרן טלפונית';
+      } else if (message.includes('כמה עולה') || message.includes('מחיר') || message.includes('עלות') || message.includes('תמחור')) {
+        aiReply = 'בהתאם למודל התמחור השקוף של "טראק דיל il":<br/>• <b>עלות בסיס נהג ודלק</b>: נעה בין ₪650 למסחרית ועד ₪2,700 למשאית רמפה<br/>• <b>עמלת מערכת</b>: 15% להובלה מזדמנת (או 10% לקו חלוקה קבוע)<br/>• <b>שקיפות מלאה</b>: עלות בסיס + עמלת מערכת = מחיר לפני מע"מ ➔ מחיר סופי כולל 18% מע"מ כחוק.<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק';
+      } else if (message.includes('מנוף') || message.includes('משטח') || message.includes('כבד') || message.includes('בלוקים')) {
+        aiReply = 'משאית מנוף (12-15 טון) מיועדת אך ורק למטענים כבדים (מעל 1.5 טון, משטחים, בלות) או פריקה לגובה/מרפסות ללא מעלית. עבור הובלות קלות נחסום שיבוץ מנוף ונשבץ משאית סגורה או מסחרית.<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק';
+      } else if (message.includes('חלוקה') || message.includes('עסק') || message.includes('b2b') || message.includes('הפצה') || message.includes('רשת')) {
+        aiReply = 'עבור קווי חלוקה קבועים לעסקים ורשתות שיווק (B2B, Multi-drop): התמחור מחושב לפי יום עבודה ומשמרת מלאה + דלק ונקודות פריקה, עם עמלת פלטפורמה מופחתת של 10% בלבד.<br/><br/>🔲 תיאום קו חלוקה קבוע לעסק<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 בדיקת התאמת מנוף למיקום';
       } else {
-        aiReply = 'ברוך הבא לגרסת היהלום של <b>Truk Dealil IL</b>. אוכל לסייע לך לקבל הצעת מחיר חכמה מבוססת AI, לעקוב אחר נהגים או לחתום על תעודות משלוח.<br/><br/>🔲 כמה עולה הובלת דירה?<br/>🔲 איך עובד מכרז הנהגים?<br/>🔲 צפה בלוח הניהול המרכזי';
+        aiReply = 'שלום, אני <b>Truk AI Dispatcher</b> — הסדרן, המתמחר ומנהל התפעול הראשי של פלטפורמת "טראק דיל il".<br/>אני כאן לאפיין את הצורך הלוגיסטי, להתאים את צי הרכב המדויק, להציג תמחור שקוף ולסגור הזמנה מיידית.<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק';
       }
     }
 

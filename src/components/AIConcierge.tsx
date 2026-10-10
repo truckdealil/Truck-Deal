@@ -43,7 +43,7 @@ export default function AIConcierge() {
             {
               id: 'init_1',
               sender: 'ai',
-              text: 'שלום! אני קונסיירז׳ הובלות ה-AI של <b>Truk Dealil IL</b>. כיצד אוכל לסייע לך לתאם הובלה מהירה, לחשב עלויות או לבצע מעקב שטח כעת?<br/><br/>🔲 כמה עולה הובלת דירה?<br/>🔲 איך עובד מכרז הנהגים?<br/>🔲 איפה המשאיות שלי כרגע?',
+              text: 'שלום! אני <b>Truk AI Dispatcher</b> — הסדרן, המתמחר ומנהל התפעול הראשי של פלטפורמת "טראק דיל il". כיצד אוכל לסייע לך באפיון לוגיסטי, התאמת צי רכב ותמחור שקוף כעת?<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק',
               timestamp: new Date().toISOString()
             }
           ]);
@@ -183,7 +183,7 @@ export default function AIConcierge() {
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="w-14 h-14 rounded-full bg-orange-electric hover:bg-orange-hover text-white flex items-center justify-center shadow-[0_4px_25px_rgba(255,127,0,0.4)] hover:scale-105 active:scale-95 transition-all cursor-pointer relative border border-orange-400"
-          title="קונסיירז׳ AI חכם"
+          title="Truk AI Dispatcher — סדרן לוגיסטי"
         >
           {isOpen ? <X className="w-6 h-6" /> : <Sparkles className="w-6 h-6 animate-pulse" />}
           
@@ -211,8 +211,8 @@ export default function AIConcierge() {
                   <Bot className="w-4 h-4 animate-bounce" />
                 </div>
                 <div>
-                  <h4 className="font-black text-white text-sm">קונסיירז׳ AI תפעולי</h4>
-                  <span className="text-[9px] text-orange-electric font-bold block leading-none">Truk Dealil Smart Assistant</span>
+                  <h4 className="font-black text-white text-sm">Truk AI Dispatcher</h4>
+                  <span className="text-[9px] text-orange-electric font-bold block leading-none">סדרן ומתמחר לוגיסטי ראשי | טראק דיל il</span>
                 </div>
               </div>
               <button
@@ -236,7 +236,7 @@ export default function AIConcierge() {
                   <div key={msg.id} className={`flex flex-col ${isAI ? 'items-start' : 'items-end'}`}>
                     {/* Speaker identity badge */}
                     <span className="text-[9px] text-gray-500 mb-0.5 font-bold px-1">
-                      {isAI ? 'Truk AI Concierge 🤖' : 'אני'}
+                      {isAI ? 'Truk AI Dispatcher 🤖' : 'אני'}
                     </span>
 
                     <div className={`max-w-[85%] rounded-2xl p-3.5 shadow-md ${
