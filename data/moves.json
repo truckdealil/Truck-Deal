@@ -74,7 +74,76 @@
         "עגלת שינוע לרמפה"
       ],
       "summary": "הובלת דירת 2 חדרים קלאסית עם מעלית גדולה ונגישות משאית נוחה"
-    }
+    },
+    "driverStatus": "en_route_to_dest",
+    "notificationsLog": [
+      {
+        "id": "notif_chdlv3blk",
+        "timestamp": "2026-10-10T04:49:04.827Z",
+        "action": "payment_success",
+        "message": "הסדר תשלום בוצע בהצלחה! סטטוס תשלום עודכן ל: שולמה מקדמה שריון. קבלה דיגיטלית ואישור הזמנה נשלחו ללקוח בוואטסאפ."
+      },
+      {
+        "id": "notif_byubum12z",
+        "timestamp": "2026-10-10T04:49:04.826Z",
+        "action": "approved_for_driver",
+        "message": "ההובלה שוחררה בהצלחה לנהג המורשה יוסי לוי. הנהג קיבל התראת שיבוץ בוואטסאפ עם פרטי הכתובות."
+      },
+      {
+        "id": "notif_ybugwc6hn",
+        "timestamp": "2026-10-10T04:49:04.736Z",
+        "action": "en_route_to_destination",
+        "message": "העמסת התכולה הסתיימה בהצלחה! משאית המוביל יצאה לדרך אל כתובת היעד שלכם. 🗺️"
+      },
+      {
+        "id": "notif_r96i3v0qg",
+        "timestamp": "2026-10-10T04:48:58.327Z",
+        "action": "payment_success",
+        "message": "הסדר תשלום בוצע בהצלחה! סטטוס תשלום עודכן ל: שולמה מקדמה שריון. קבלה דיגיטלית ואישור הזמנה נשלחו ללקוח בוואטסאפ."
+      },
+      {
+        "id": "notif_2u8znoslw",
+        "timestamp": "2026-10-10T04:48:58.326Z",
+        "action": "approved_for_driver",
+        "message": "ההובלה שוחררה בהצלחה לנהג המורשה יוסי לוי. הנהג קיבל התראת שיבוץ בוואטסאפ עם פרטי הכתובות."
+      },
+      {
+        "id": "notif_nbj8xnir2",
+        "timestamp": "2026-10-10T04:48:58.245Z",
+        "action": "loading_started",
+        "message": "ההעמסה שלכם התחילה! הנהג והסבלים מעמיסים את הציוד בבטחה במשאית. 📦"
+      },
+      {
+        "id": "notif_agd75yjuh",
+        "timestamp": "2026-10-10T04:48:51.730Z",
+        "action": "payment_success",
+        "message": "הסדר תשלום בוצע בהצלחה! סטטוס תשלום עודכן ל: שולמה מקדמה שריון. קבלה דיגיטלית ואישור הזמנה נשלחו ללקוח בוואטסאפ."
+      },
+      {
+        "id": "notif_8wswgtpi8",
+        "timestamp": "2026-10-10T04:48:51.729Z",
+        "action": "approved_for_driver",
+        "message": "ההובלה שוחררה בהצלחה לנהג המורשה יוסי לוי. הנהג קיבל התראת שיבוץ בוואטסאפ עם פרטי הכתובות."
+      },
+      {
+        "id": "notif_f83adhphk",
+        "timestamp": "2026-10-10T04:48:51.531Z",
+        "action": "driver_en_route",
+        "message": "הנהג יוסי לוי יצא לדרך אל כתובת המוצא שלכם! 🚚"
+      },
+      {
+        "id": "notif_wies3zz34",
+        "timestamp": "2026-10-10T04:48:49.871Z",
+        "action": "payment_success",
+        "message": "הסדר תשלום בוצע בהצלחה! סטטוס תשלום עודכן ל: שולמה מקדמה שריון. קבלה דיגיטלית ואישור הזמנה נשלחו ללקוח בוואטסאפ."
+      },
+      {
+        "id": "notif_ll22nm8ed",
+        "timestamp": "2026-10-10T04:48:49.869Z",
+        "action": "approved_for_driver",
+        "message": "ההובלה שוחררה בהצלחה לנהג המורשה יוסי לוי. הנהג קיבל התראת שיבוץ בוואטסאפ עם פרטי הכתובות."
+      }
+    ]
   },
   {
     "id": "move_afternoon3h",
@@ -117,7 +186,7 @@
     "images": [],
     "createdAt": "2026-10-10T01:14:50.469Z",
     "status": "approved_for_driver",
-    "paymentStatus": "paid_full",
+    "paymentStatus": "net_30",
     "clientApprovedForBilling": true,
     "assignedDriverId": "driver_1",
     "assignedDriverName": "יוסי לוי",
@@ -132,7 +201,15 @@
         "פירוק והרכבת ארון מומלצת"
       ],
       "summary": "הובלת חדר שינה ופינת אוכל"
-    }
+    },
+    "notificationsLog": [
+      {
+        "id": "notif_i32cn3j73",
+        "timestamp": "2026-10-10T03:41:36.540Z",
+        "action": "approved_for_driver",
+        "message": "ההובלה שוחררה בהצלחה לנהג המורשה יוסי לוי. הנהג קיבל התראת שיבוץ בוואטסאפ עם פרטי הכתובות."
+      }
+    ]
   },
   {
     "id": "move_tomorrow",
@@ -185,6 +262,49 @@
         "שימוש בעגלות משא ייעודיות למשרד"
       ],
       "summary": "הובלת משרד 6 עמדות עבודה"
+    }
+  },
+  {
+    "id": "TRK-9154",
+    "clientName": "לקוח Truk Dealil IL",
+    "clientPhone": "050-1234567",
+    "clientEmail": "truck.dealil@gmail.com",
+    "companyName": "",
+    "originAddress": "אזור המרכז, קומה 2",
+    "destAddress": "יעד פריקה, קומה 2",
+    "moveDate": "2026-10-11",
+    "moveTime": "10:00",
+    "moveType": "apartment",
+    "floor": 2,
+    "hasElevator": true,
+    "elevatorDetails": {
+      "sofaFits": true,
+      "fridgeFits": true
+    },
+    "truckAccess": "easy",
+    "craneNeeded": "no",
+    "items": [
+      {
+        "id": "item_disp_1",
+        "name": "תכולת הובלה מלאה לפי אפיון סדרן AI",
+        "category": "furniture",
+        "quantity": 1
+      }
+    ],
+    "images": [],
+    "createdAt": "2026-10-10T05:50:47.403Z",
+    "status": "bidding",
+    "paymentStatus": "pending_deposit",
+    "clientApprovedForBilling": false,
+    "driverBids": [],
+    "aiAnalysis": {
+      "estimatedPriceRange": "₪2,000 - ₪2,800",
+      "difficultyScore": 5,
+      "recommendations": [
+        "מכרז פתוח לנהגים וספקים מורשים",
+        "מעקב דיגיטלי בזמן אמת פעיל"
+      ],
+      "summary": "כרטיס הובלה ומכרז [TRK-9154] שודר בהצלחה"
     }
   }
 ]

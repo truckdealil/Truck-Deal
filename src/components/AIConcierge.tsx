@@ -10,7 +10,11 @@ interface ChatMessage {
   driveLink?: string;
 }
 
-export default function AIConcierge() {
+interface AIConciergeProps {
+  onNavigate?: (view: 'landing' | 'quote' | 'driver' | 'admin' | 'tracking' | 'feedback', moveId: string | null) => void;
+}
+
+export default function AIConcierge({ onNavigate }: AIConciergeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -106,10 +110,30 @@ export default function AIConcierge() {
   // Helper to detect and handle clicking on custom continuation buttons (🔲)
   const handleContinuationClick = (optionText: string) => {
     const cleanedOption = optionText.replace('🔲', '').trim();
+
+    // If client clicks "מעבר למעקב חי והסדרת מקדמה", navigate directly if moveId found
+    if (cleanedOption.includes('מעקב חי') || cleanedOption.includes('מקדמה')) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const match = messages[i].text.match(/TRK-\d+/);
+        if (match && onNavigate) {
+          onNavigate('tracking', match[0]);
+          break;
+        }
+      }
+    } else if (cleanedOption.includes('WhatsApp') || cleanedOption.includes('וואטסאפ')) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const match = messages[i].text.match(/https:\/\/api\.whatsapp\.com[^\s<"']+/);
+        if (match) {
+          window.open(match[0], '_blank');
+          break;
+        }
+      }
+    }
+
     handleSendMessage(cleanedOption);
   };
 
-  // Function to extract text lines and identify 🔲 options
+  // Function to extract text lines and identify 🔲 options & Magic Links
   const renderMessageContent = (msg: ChatMessage) => {
     const rawHTML = msg.text || '';
     const lines = rawHTML
@@ -134,6 +158,95 @@ export default function AIConcierge() {
                 <span className="text-orange-electric font-black text-sm">🔲</span>
                 <span dangerouslySetInnerHTML={{ __html: trimmed.replace('🔲', '').trim() }} />
               </button>
+            );
+          }
+
+          // Check for Magic Link patterns: Tracking, Driver, WhatsApp
+          const urlMatch = trimmed.match(/(https?:\/\/[^\s<"']+)/);
+          if (urlMatch) {
+            const url = urlMatch[1];
+            if (url.includes('view=tracking')) {
+              const moveIdMatch = url.match(/moveId=([^&\s]+)/);
+              const moveId = moveIdMatch ? moveIdMatch[1] : '';
+              return (
+                <div key={idx} className="my-1.5">
+                  <a
+                    href={url}
+                    onClick={(e) => {
+                      if (onNavigate) {
+                        e.preventDefault();
+                        onNavigate('tracking', moveId || null);
+                      }
+                    }}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 hover:text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer select-none"
+                  >
+                    <span>📍 מעקב הובלה ומקדמה ללקוח</span>
+                    {moveId && (
+                      <span className="font-mono text-[10px] bg-emerald-950/70 border border-emerald-500/30 px-1.5 py-0.5 rounded text-emerald-200">
+                        {moveId}
+                      </span>
+                    )}
+                  </a>
+                </div>
+              );
+            }
+
+            if (url.includes('view=driver')) {
+              const moveIdMatch = url.match(/moveId=([^&\s]+)/);
+              const moveId = moveIdMatch ? moveIdMatch[1] : '';
+              return (
+                <div key={idx} className="my-1.5">
+                  <a
+                    href={url}
+                    onClick={(e) => {
+                      if (onNavigate) {
+                        e.preventDefault();
+                        onNavigate('driver', moveId || null);
+                      }
+                    }}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-blue-300 hover:text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer select-none"
+                  >
+                    <span>🚛 כניסת נהגים והגשת הצעות</span>
+                    {moveId && (
+                      <span className="font-mono text-[10px] bg-blue-950/70 border border-blue-500/30 px-1.5 py-0.5 rounded text-blue-200">
+                        {moveId}
+                      </span>
+                    )}
+                  </a>
+                </div>
+              );
+            }
+
+            if (url.includes('whatsapp.com')) {
+              return (
+                <div key={idx} className="my-1.5">
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 text-green-300 hover:text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer select-none"
+                  >
+                    <span>📲 שידור המכרז בוואטסאפ (WhatsApp)</span>
+                  </a>
+                </div>
+              );
+            }
+
+            // General link
+            const parts = line.split(url);
+            return (
+              <p key={idx} className="text-xs md:text-sm leading-relaxed">
+                <span dangerouslySetInnerHTML={{ __html: parts[0] }} />
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-orange-electric hover:underline break-all font-mono text-xs px-1"
+                >
+                  {url}
+                </a>
+                <span dangerouslySetInnerHTML={{ __html: parts.slice(1).join(url) }} />
+              </p>
             );
           }
 

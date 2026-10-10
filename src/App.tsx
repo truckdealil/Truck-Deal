@@ -272,7 +272,7 @@ export default function App() {
       </footer>
 
       {/* Floating AI Concierge Smart Helper */}
-      <AIConcierge />
+      <AIConcierge onNavigate={handleNavigate} />
     </div>
   );
 }

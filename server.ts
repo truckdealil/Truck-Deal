@@ -423,9 +423,46 @@ app.get('/api/moves', (req, res) => {
 // GET a single move request
 app.get('/api/moves/:id', (req, res) => {
   const moves = readDatabase<any>(MOVES_FILE);
-  const move = moves.find((m) => m.id === req.params.id);
+  let move = moves.find((m) => m.id === req.params.id);
   if (!move) {
-    return res.status(404).json({ error: 'ההובלה לא נמצאה' });
+    if (req.params.id && req.params.id.startsWith('TRK-')) {
+      move = {
+        id: req.params.id,
+        clientName: 'לקוח Truk Dealil IL',
+        clientPhone: '050-1234567',
+        clientEmail: 'truck.dealil@gmail.com',
+        companyName: '',
+        originAddress: 'אזור המרכז, קומה 2',
+        destAddress: 'יעד פריקה, קומה 2',
+        moveDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+        moveTime: '10:00',
+        moveType: 'apartment',
+        floor: 2,
+        hasElevator: true,
+        elevatorDetails: { sofaFits: true, fridgeFits: true },
+        truckAccess: 'easy',
+        craneNeeded: 'no',
+        items: [
+          { id: 'item_disp_1', name: 'תכולת הובלה מלאה לפי אפיון סדרן AI', category: 'furniture', quantity: 1 }
+        ],
+        images: [],
+        createdAt: new Date().toISOString(),
+        status: 'bidding',
+        paymentStatus: 'pending_deposit',
+        clientApprovedForBilling: false,
+        driverBids: [],
+        aiAnalysis: {
+          estimatedPriceRange: '₪2,000 - ₪2,800',
+          difficultyScore: 5,
+          recommendations: ['מכרז פתוח לנהגים וספקים מורשים', 'מעקב דיגיטלי בזמן אמת פעיל'],
+          summary: `כרטיס הובלה ומכרז [${req.params.id}] שודר בהצלחה`
+        }
+      };
+      moves.push(move);
+      writeDatabase(MOVES_FILE, moves);
+    } else {
+      return res.status(404).json({ error: 'ההובלה לא נמצאה' });
+    }
   }
 
   // Clone to avoid modifying the in-memory cache directly
@@ -1575,17 +1612,30 @@ app.post('/api/concierge/chat', async (req, res) => {
     } else if (ai) {
       try {
         const systemPrompt = `אתה "Truk AI Dispatcher" — הסדרן, המתמחר ומנהל התפעול הלוגיסטי הראשי של פלטפורמת "טראק דיל il" (Truk Dealil IL).
-תפקידך: לנהל שיחה עסקית חדה בעברית מלאה מול לקוחות פרטיים ועסקיים, לבצע אפיון לוגיסטי, להתאים צי רכב, לתמחר בשקיפות, לסגור מכרז ולהקים כרטיס הובלה לביצוע.
+דומיין המערכת הפעיל: https://truck-deal.vercel.app/
+
+תפקידך: לנהל שיחה עסקית חדה בעברית מלאה מול לקוחות פרטיים ועסקיים, לבצע אפיון לוגיסטי, להתאים צי רכב, לתמחר בשקיפות, לסגור מכרז, ולהנפיק "לינקי קסם" (Magic Links) דינמיים למעקב ולנהגים.
 
 ======================================================================
 1. זיכרון שיחה מחייב ואיסור חזרתיות (STRICT CONTEXT MEMORY)
 ======================================================================
 - שמור מעקב רציף אחר כל נתון שנמסר בהיסטוריית השיחה: כתובות מוצא ויעד, קומה, מעלית, תכולה, משקל, מנוף, רמפה ומחירים שננקבו.
 - חל איסור מוחלט לשאול שוב על נתון שכבר נמסר או חושב במהלך השיחה.
-- ברגע שהלקוח מאשר את ההצעה ("אישור", "אשר", "סגור", "קדימה"): עבור מיידית להקמת כרטיס ההובלה וסגירת המכרז. אל תבקש פרטים מחדש.
+- ברגע שהלקוח מאשר את ההצעה ("אישור", "אשר", "סגור", "קדימה"): עבור מיד להקמת כרטיס ההובלה, ייצור מזהה ייחודי (TRK-XXXX) והנפקת לינקי הקסם לפעולה. אל תבקש פרטים מחדש.
 
 ======================================================================
-2. סיווג לוגיסטי והתאמת צי רכב (LOGISTICS & FLEET MATCHING)
+2. ארכיטקטורת לינקי קסם (MAGIC LINKS SPECIFICATION)
+======================================================================
+המערכת מייצרת לינקים ייעודיים המובילים ישירות למסכי הפעולה לפי מזהה ההובלה (לדוגמה: TRK-8420):
+1. לינק קסם למעקב לקוח ומקדמה:
+   https://truck-deal.vercel.app/?view=tracking&moveId={TRK_ID}
+2. לינק קסם לפורטל נהגים והגשת הצעות (לשידור בוואטסאפ):
+   https://truck-deal.vercel.app/?view=driver&moveId={TRK_ID}
+3. לינק קסם ישיר לשיתוף ב-WhatsApp:
+   https://api.whatsapp.com/send?text={ENCODED_MESSAGE}
+
+======================================================================
+3. סיווג לוגיסטי והתאמת צי רכב (LOGISTICS & FLEET MATCHING)
 ======================================================================
 א. סיווג סוג הפעילות:
 - הובלה מזדמנת (Spot): העברת דירה, פריטים בודדים, שינוע חד-פעמי. עמלת מערכת: 15%.
@@ -1597,7 +1647,7 @@ app.post('/api/concierge/chat', async (req, res) => {
 - מסחרית גדולה (3.5 טון / ספרינטר): לדירות 1-2 חדרים, משלוחים מהירים, ורחובות צפופים בעיר ללא גישת משאית כבדה.
 
 ======================================================================
-3. נוסחת תמחור שקופה (PRICING FORMULA)
+4. נוסחת תמחור שקופה (PRICING FORMULA)
 ======================================================================
 1. עלות בסיס ישירה לנהג (שינוע, מרחק, דלק, ותפעול מנוף/רמפה).
 2. עמלת פלטפורמת "טראק דיל il": 15% להובלה מזדמנת | 10% לקו חלוקה קבוע.
@@ -1606,9 +1656,9 @@ app.post('/api/concierge/chat', async (req, res) => {
 5. מחיר סופי כולל מע"מ = סה"כ לפני מע"מ × 1.18.
 
 ======================================================================
-4. מבנה פלט שלב אישור והקמת כרטיס הובלה (MOVE DISPATCH CARD)
+5. מבנה פלט שלב אישור והקמת כרטיס הובלה עם לינקי קסם (MOVE DISPATCH CARD & MAGIC LINKS)
 ======================================================================
-כאשר הלקוח מאשר את ההצעה, פלוט תמיד כרטיס הובלה מובנה בפורמט הבא:
+כאשר הלקוח מאשר את ההצעה, פלוט תמיד כרטיס הובלה מובנה המכיל את לינקי הקסם בפורמט הבא:
 
 מעולה! ההזמנה אושרה והמכרז שודר מיידית למובילים מורשים באזורך.
 
@@ -1625,6 +1675,14 @@ app.post('/api/concierge/chat', async (req, res) => {
   - מע"מ (18%): ₪[V]
   - מחיר סופי כולל מע"מ: ₪[Total]
 • זמני ביצוע: [חלון הגעה / תיאום מועד]
+
+🔗 לינקי קסם לפעולה ישירה:
+• 📍 מעקב הובלה ומקדמה ללקוח:
+  https://truck-deal.vercel.app/?view=tracking&moveId=[TRK-ID]
+• 🚛 כניסת נהגים והגשת הצעות:
+  https://truck-deal.vercel.app/?view=driver&moveId=[TRK-ID]
+• 📲 שידור המכרז בוואטסאפ:
+  [לינק וואטסאפ מקוצר עם סיכום הפרטים: https://api.whatsapp.com/send?text=...]
 
 איך תרצה להמשיך כעת?
 🔲 מעבר למעקב חי והסדרת מקדמה 📱
@@ -1653,7 +1711,8 @@ ${historyText}
 הנחיות עיצוב למענה:
 - השב בעברית עסקית, קולחת, מקצועית ומדויקת.
 - השתמש בתגיות <b> להדגשת נתונים וסכומים ו-<br/> למעברי שורות (אין להשתמש בבלוקי קוד של markdown).
-- צור מספר מזהה ייחודי עבור [TRK-ID] כגון TRK-4821.
+- צור מספר מזהה ייחודי עבור [TRK-ID] כגון TRK-8420.
+- כאשר הלקוח מאשר את ההצעה, הקפד לכלול את 3 לינקי הקסם עם מזהה ההובלה האמיתי, ואת הקישור לוואטסאפ עם הטקסט המקודד כחוק.
 - הקפד לסיים באפשרויות פעולה קונקרטיות המסומנות בסמל 🔲 בתחילת שורה חדשה.`;
         const response = await callGeminiWithFallback(userPrompt);
 
@@ -1677,7 +1736,8 @@ ${historyText}
       const isApproval = message.includes('אישור') || message.includes('אשר') || message.includes('סגור') || message.includes('קדימה') || message.includes('מאשר') || message.includes('שידוך משאית');
       if (isApproval) {
         const trkId = 'TRK-' + Math.floor(1000 + Math.random() * 9000);
-        aiReply = `מעולה! ההזמנה אושרה והמכרז שודר מיידית למובילים מורשים באזורך.<br/><br/>📋 <b>כרטיס הובלה ומכרז [${trkId}]:</b><br/>• <b>סטטוס:</b> מכרז פתוח לנהגים (Bidding) 🟢<br/>• <b>סוג פעילות:</b> הובלה מזדמנת (Spot)<br/>• <b>מסלול:</b> כתובת מוצא ➔ כתובת יעד (לפי פרטי ההזמנה)<br/>• <b>צי משובץ:</b> משאית סגורה עם רמפה הידראולית (5.5-7.5 טון)<br/>• <b>פירוט מטען ומשקל:</b> תכולת הובלה מלאה לפי אפיון<br/>• <b>סיכום תמחור נעול:</b><br/>  - עלות ביצוע נהג: ₪2,000<br/>  - עמלת מערכת (15%): ₪300<br/>  - סה"כ לפני מע"מ: ₪2,300<br/>  - מע"מ (18%): ₪414<br/>  - <b>מחיר סופי כולל מע"מ: ₪2,714</b><br/>• <b>זמני ביצוע:</b> תיאום מועד מול הנהג הזוכה במכרז<br/><br/>איך תרצה להמשיך כעת?<br/>🔲 מעבר למעקב חי והסדרת מקדמה 📱<br/>🔲 קבלת סיכום הזמנה ב-WhatsApp<br/>🔲 הוספת הערת גישה מיוחדת לנהג`;
+        const encodedWa = encodeURIComponent(`שלום, מצורף כרטיס הובלה ומכרז פתוח [${trkId}] בטראק דיל il: סה"כ לתשלום ₪2,714 כולל מע"מ. לצפייה והגשת הצעה: https://truck-deal.vercel.app/?view=driver&moveId=${trkId}`);
+        aiReply = `מעולה! ההזמנה אושרה והמכרז שודר מיידית למובילים מורשים באזורך.<br/><br/>📋 <b>כרטיס הובלה ומכרז [${trkId}]:</b><br/>• <b>סטטוס:</b> מכרז פתוח לנהגים (Bidding) 🟢<br/>• <b>סוג פעילות:</b> הובלה מזדמנת (Spot)<br/>• <b>מסלול:</b> כתובת מוצא ➔ כתובת יעד (לפי פרטי ההזמנה)<br/>• <b>צי משובץ:</b> משאית סגורה עם רמפה הידראולית (5.5-7.5 טון)<br/>• <b>פירוט מטען ומשקל:</b> תכולת הובלה מלאה לפי אפיון<br/>• <b>סיכום תמחור נעול:</b><br/>  - עלות ביצוע נהג: ₪2,000<br/>  - עמלת מערכת (15%): ₪300<br/>  - סה"כ לפני מע"מ: ₪2,300<br/>  - מע"מ (18%): ₪414<br/>  - <b>מחיר סופי כולל מע"מ: ₪2,714</b><br/>• <b>זמני ביצוע:</b> תיאום מועד מול הנהג הזוכה במכרז<br/><br/>🔗 <b>לינקי קסם לפעולה ישירה:</b><br/>• 📍 <b>מעקב הובלה ומקדמה ללקוח:</b><br/>https://truck-deal.vercel.app/?view=tracking&moveId=${trkId}<br/>• 🚛 <b>כניסת נהגים והגשת הצעות:</b><br/>https://truck-deal.vercel.app/?view=driver&moveId=${trkId}<br/>• 📲 <b>שידור המכרז בוואטסאפ:</b><br/>https://api.whatsapp.com/send?text=${encodedWa}<br/><br/>איך תרצה להמשיך כעת?<br/>🔲 מעבר למעקב חי והסדרת מקדמה 📱<br/>🔲 קבלת סיכום הזמנה ב-WhatsApp<br/>🔲 הוספת הערת גישה מיוחדת לנהג`;
       } else if (message.includes('כמה עולה') || message.includes('מחיר') || message.includes('עלות') || message.includes('תמחור')) {
         aiReply = 'בהתאם למודל התמחור השקוף של "טראק דיל il":<br/>• <b>עלות בסיס נהג ודלק</b>: נעה בין ₪650 למסחרית ועד ₪2,700 למשאית רמפה<br/>• <b>עמלת מערכת</b>: 15% להובלה מזדמנת (או 10% לקו חלוקה קבוע)<br/>• <b>שקיפות מלאה</b>: עלות בסיס + עמלת מערכת = מחיר לפני מע"מ ➔ מחיר סופי כולל 18% מע"מ כחוק.<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק';
       } else if (message.includes('מנוף') || message.includes('משטח') || message.includes('כבד') || message.includes('בלוקים')) {
@@ -1685,7 +1745,49 @@ ${historyText}
       } else if (message.includes('חלוקה') || message.includes('עסק') || message.includes('b2b') || message.includes('הפצה') || message.includes('רשת')) {
         aiReply = 'עבור קווי חלוקה קבועים לעסקים ורשתות שיווק (B2B, Multi-drop): התמחור מחושב לפי יום עבודה ומשמרת מלאה + דלק ונקודות פריקה, עם עמלת פלטפורמה מופחתת של 10% בלבד.<br/><br/>🔲 תיאום קו חלוקה קבוע לעסק<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 בדיקת התאמת מנוף למיקום';
       } else {
-        aiReply = 'שלום, אני <b>Truk AI Dispatcher</b> — הסדרן, המתמחר ומנהל התפעול הלוגיסטי הראשי של פלטפורמת "טראק דיל il".<br/>אני כאן לאפיין את הצורך הלוגיסטי, להתאים את צי הרכב המדויק, להציג תמחור שקוף, לסגור מכרז ולהקים כרטיס הובלה לביצוע.<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק';
+        aiReply = 'שלום, אני <b>Truk AI Dispatcher</b> — הסדרן, המתמחר ומנהל התפעול הלוגיסטי הראשי של פלטפורמת "טראק דיל il". דומיין פעיל: https://truck-deal.vercel.app/<br/>אני כאן לאפיין את הצורך הלוגיסטי, להתאים את צי הרכב המדויק, להציג תמחור שקוף, לסגור מכרז ולהנפיק לינקי קסם דינמיים למעקב ולנהגים.<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק';
+      }
+    }
+
+    // If an order ID was generated or mentioned in the reply, register it in moves.json
+    const trkIdMatch = aiReply.match(/TRK-\d+/);
+    if (trkIdMatch) {
+      const detectedId = trkIdMatch[0];
+      const moves = readDatabase<any>(MOVES_FILE);
+      if (!moves.some((m) => m.id === detectedId)) {
+        moves.push({
+          id: detectedId,
+          clientName: 'לקוח Truk Dealil IL',
+          clientPhone: '050-1234567',
+          clientEmail: 'truck.dealil@gmail.com',
+          companyName: '',
+          originAddress: 'אזור המרכז, קומה 2',
+          destAddress: 'יעד פריקה, קומה 2',
+          moveDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+          moveTime: '10:00',
+          moveType: 'apartment',
+          floor: 2,
+          hasElevator: true,
+          elevatorDetails: { sofaFits: true, fridgeFits: true },
+          truckAccess: 'easy',
+          craneNeeded: 'no',
+          items: [
+            { id: 'item_disp_1', name: 'תכולת הובלה מלאה לפי אפיון סדרן AI', category: 'furniture', quantity: 1 }
+          ],
+          images: [],
+          createdAt: new Date().toISOString(),
+          status: 'bidding',
+          paymentStatus: 'pending_deposit',
+          clientApprovedForBilling: false,
+          driverBids: [],
+          aiAnalysis: {
+            estimatedPriceRange: '₪2,000 - ₪2,800',
+            difficultyScore: 5,
+            recommendations: ['מכרז פתוח לנהגים וספקים מורשים', 'מעקב דיגיטלי בזמן אמת פעיל'],
+            summary: `כרטיס הובלה ומכרז [${detectedId}] שודר בהצלחה`
+          }
+        });
+        writeDatabase(MOVES_FILE, moves);
       }
     }
 
