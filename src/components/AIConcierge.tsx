@@ -43,7 +43,7 @@ export default function AIConcierge() {
             {
               id: 'init_1',
               sender: 'ai',
-              text: 'שלום! אני <b>Truk AI Dispatcher</b> — הסדרן, המתמחר ומנהל התפעול הראשי של פלטפורמת "טראק דיל il". כיצד אוכל לסייע לך באפיון לוגיסטי, התאמת צי רכב ותמחור שקוף כעת?<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק',
+              text: 'שלום! אני <b>Truk AI Dispatcher</b> — הסדרן, המתמחר ומנהל התפעול הלוגיסטי הראשי של פלטפורמת "טראק דיל il". כיצד אוכל לסייע לך באפיון לוגיסטי, התאמת צי רכב ותמחור שקוף כעת?<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק',
               timestamp: new Date().toISOString()
             }
           ]);
@@ -111,21 +111,28 @@ export default function AIConcierge() {
 
   // Function to extract text lines and identify 🔲 options
   const renderMessageContent = (msg: ChatMessage) => {
-    const rawHTML = msg.text;
-    const lines = rawHTML.split('<br/>');
+    const rawHTML = msg.text || '';
+    const lines = rawHTML
+      .replace(/<br\s*[\/]?>/gi, '\n')
+      .split('\n');
 
     return (
-      <div className="space-y-2 text-right">
+      <div className="space-y-1.5 text-right">
         {lines.map((line, idx) => {
-          if (line.trim().startsWith('🔲')) {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            return <div key={idx} className="h-0.5" />;
+          }
+
+          if (trimmed.startsWith('🔲')) {
             return (
               <button
                 key={idx}
-                onClick={() => handleContinuationClick(line)}
+                onClick={() => handleContinuationClick(trimmed)}
                 className="w-full mt-1.5 py-2 px-3 bg-navy-950 hover:bg-orange-electric/10 hover:border-orange-electric border border-navy-800 text-gray-200 hover:text-white rounded-xl text-xs font-semibold text-right transition-all flex items-center gap-2 cursor-pointer shadow-sm select-none"
               >
                 <span className="text-orange-electric font-black text-sm">🔲</span>
-                <span dangerouslySetInnerHTML={{ __html: line.replace('🔲', '').trim() }} />
+                <span dangerouslySetInnerHTML={{ __html: trimmed.replace('🔲', '').trim() }} />
               </button>
             );
           }
