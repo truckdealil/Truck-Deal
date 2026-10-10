@@ -72,10 +72,13 @@ export interface MoveRequest {
   isPaymentLocked?: boolean;
   driverBids: DriverBid[];
   finalApprovedBidId?: string;
+  assignedDriverId?: string;
   assignedDriverName?: string;
   assignedDriverPhone?: string;
   assignedDriverTruck?: string;
   assignedDriverPlate?: string;
+  assignedTruckModel?: string;
+  assignedTruckLicense?: string;
   adminReviewTicketId?: string;
   adminReviewTicketResolved?: boolean;
   notificationsLog?: {

@@ -8,6 +8,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { MoveRequest, DriverBid } from '../types';
 import OperationalChat from './OperationalChat';
+import MoveCountdownTimer from './MoveCountdownTimer';
 
 interface DriverFieldAppProps {
   initialMoveId: string | null;
@@ -197,9 +198,70 @@ export default function DriverFieldApp({ initialMoveId, onBackToBidding }: Drive
     if (!selectedDriver) return;
 
     // Find any unassigned move request ('new' or 'bidding')
-    const unassigned = moves.find(m => m.status === 'new' || m.status === 'bidding');
+    let unassigned = moves.find(m => m.status === 'new' || m.status === 'bidding');
     if (!unassigned) {
-      alert('לא נמצאו הובלות חדשות פתוחות במערכת למטרת שיוך. אנא צור הובלה חדשה דרך המחשבון תחילה.');
+      // Auto-generate realistic move scheduled today in 45 minutes (triggers colorful <1h alert immediately)
+      const now = new Date();
+      const in45Min = new Date(now.getTime() + 45 * 60 * 1000);
+      const hours = in45Min.getHours().toString().padStart(2, '0');
+      const mins = in45Min.getMinutes().toString().padStart(2, '0');
+      const dateStr = now.toISOString().split('T')[0];
+
+      const newMockMove: MoveRequest = {
+        id: 'move_' + Math.random().toString(36).substr(2, 9),
+        clientName: 'רונן אברהם (הובלה דחופה)',
+        clientPhone: '050-1122334',
+        clientEmail: 'ronen.demo@trukdeal.co.il',
+        originAddress: 'אבן גבירול 104, תל אביב',
+        destAddress: 'רוטשילד 45, ראשון לציון',
+        moveDate: dateStr,
+        moveTime: `${hours}:${mins}`,
+        moveType: 'apartment',
+        floor: 3,
+        hasElevator: true,
+        elevatorDetails: { sofaFits: true, fridgeFits: true },
+        truckAccess: 'easy',
+        craneNeeded: 'no',
+        items: [
+          { id: 'sofa_3', name: 'ספה 3 מושבים', category: 'furniture', quantity: 1 },
+          { id: 'double_bed', name: 'מיטה זוגית + מזרן', category: 'furniture', quantity: 1 },
+          { id: 'fridge_big', name: 'מקרר גדול', category: 'appliances', quantity: 1 },
+          { id: 'boxes', name: 'ארגזים ארוזים', category: 'boxes', quantity: 20 },
+        ],
+        images: [],
+        createdAt: new Date().toISOString(),
+        status: 'approved_for_driver',
+        paymentStatus: 'paid_deposit',
+        clientApprovedForBilling: true,
+        assignedDriverId: selectedDriver.id,
+        assignedDriverName: selectedDriver.fullName,
+        assignedDriverPhone: selectedDriver.phone,
+        assignedTruckModel: selectedDriver.truckType,
+        assignedTruckLicense: '88-442-19',
+        driverBids: [],
+        aiAnalysis: {
+          estimatedPriceRange: '1,800 - 2,200 ₪',
+          difficultyScore: 4,
+          recommendations: ['ציוד קשירה מלא', 'עגלת שינוע לרמפה'],
+          summary: 'הובלת דירת 2 חדרים קלאסית עם מעלית גדולה'
+        }
+      };
+
+      setLoading(true);
+      try {
+        await fetch('/api/moves', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newMockMove)
+        });
+        await fetchData();
+      } catch (err) {
+        const updatedMoves = [newMockMove, ...moves];
+        setMoves(updatedMoves);
+        localStorage.setItem('truk_dealil_all_moves', JSON.stringify(updatedMoves));
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
@@ -589,6 +651,22 @@ export default function DriverFieldApp({ initialMoveId, onBackToBidding }: Drive
                 <span className="text-[10px] text-gray-400">מסודר כרונולוגית</span>
               </div>
 
+              {/* UPCOMING MOVE COUNTDOWN SPOTLIGHT BANNER */}
+              {activeDriverJobs.length > 0 && (
+                <div className="mb-5">
+                  <MoveCountdownTimer
+                    moveDate={activeDriverJobs[0].moveDate}
+                    moveTime={activeDriverJobs[0].moveTime}
+                    status={activeDriverJobs[0].status}
+                    variant="hero"
+                    title={`טיימר ההובלה הקרובה בלוח המשימות: #${activeDriverJobs[0].id.substring(5, 11).toUpperCase()}`}
+                    clientName={activeDriverJobs[0].clientName}
+                    originAddress={activeDriverJobs[0].originAddress.split(',')[0]}
+                    showSimulateToggle={true}
+                  />
+                </div>
+              )}
+
               {activeDriverJobs.length === 0 ? (
                 <div className="text-center py-12 space-y-4">
                   <div className="w-16 h-16 rounded-full bg-navy-950 flex items-center justify-center border border-navy-800 text-gray-500 mx-auto">
@@ -660,6 +738,16 @@ export default function DriverFieldApp({ initialMoveId, onBackToBidding }: Drive
                             </span>
                           )}
                         </div>
+
+                        {/* Countdown timer card inside task board feed */}
+                        <div className="pt-2">
+                          <MoveCountdownTimer
+                            moveDate={move.moveDate}
+                            moveTime={move.moveTime}
+                            status={move.status}
+                            variant="card"
+                          />
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-3 w-full md:w-auto border-t border-navy-850 md:border-none pt-3 md:pt-0">
@@ -699,42 +787,161 @@ export default function DriverFieldApp({ initialMoveId, onBackToBidding }: Drive
               </div>
             </div>
 
+            {/* SCHEDULED MOVE COUNTDOWN & ALERT BANNER */}
+            <MoveCountdownTimer 
+              moveDate={selectedMove.moveDate}
+              moveTime={selectedMove.moveTime}
+              status={selectedMove.status}
+              variant="banner"
+              title={`טיימר ספירה לאחור לשעת ההובלה המתוכננת (#${selectedMove.id.substring(5, 11).toUpperCase()})`}
+              clientName={selectedMove.clientName}
+              originAddress={selectedMove.originAddress}
+              showSimulateToggle={true}
+            />
+
             {/* QUICK ACTIONS PANEL (Waze Navigation, Direct calling client & dispatch) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               
               {/* SMART MAP NAVIGATION BOARD */}
               <div className="bg-navy-900 border border-navy-800 p-5 rounded-2xl space-y-4">
-                <h3 className="font-bold text-white text-sm border-b border-navy-850 pb-2 flex items-center gap-1.5">
-                  <Navigation className="w-4 h-4 text-orange-electric" />
-                  <span>ניווט לווייני חכם לשטח</span>
-                </h3>
+                <div className="flex items-center justify-between border-b border-navy-850 pb-2">
+                  <h3 className="font-bold text-white text-sm flex items-center gap-1.5">
+                    <Navigation className="w-4 h-4 text-orange-electric" />
+                    <span>ניווט לווייני חכם לשטח</span>
+                  </h3>
+                  {(activeJobStatus === 'en_route_to_origin' || activeJobStatus === 'en_route_to_dest') && (
+                    <span className="text-[10px] font-black text-white bg-orange-electric/20 border border-orange-electric/40 px-2.5 py-1 rounded-full flex items-center gap-1.5 animate-pulse">
+                      <span className="w-2 h-2 rounded-full bg-orange-electric animate-ping" />
+                      <span>ניווט פועם - צא לדרך! 🚀</span>
+                    </span>
+                  )}
+                </div>
 
                 <p className="text-xs text-gray-300">
                   לחץ לניווט מהיר ב-Waze או Google Maps ישירות למשאיות:
                 </p>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <a
-                    href={`https://waze.com/ul?q=${encodeURIComponent(selectedMove.originAddress)}&navigate=yes`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="p-3 bg-navy-950 hover:bg-navy-900 border border-navy-800 rounded-xl text-center flex flex-col items-center gap-1 transition-all group cursor-pointer hover:border-orange-electric"
+                {(activeJobStatus === 'en_route_to_origin' || activeJobStatus === 'en_route_to_dest') && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-2.5 bg-orange-electric/10 border border-orange-electric/30 rounded-xl flex items-center gap-2 text-xs font-bold text-orange-electric"
                   >
-                    <MapPin className="w-5 h-5 text-orange-electric group-hover:scale-110 transition-transform" />
-                    <span className="text-xs font-bold text-white">נווט למוצא ב-Waze</span>
-                    <span className="text-[9px] text-gray-400">כתובת העמסה</span>
-                  </a>
+                    <span className="text-sm animate-bounce">⚡</span>
+                    <span>
+                      {activeJobStatus === 'en_route_to_origin' 
+                        ? 'הסטטוס שונה ל"בדרך למוצא" - לחץ על כפתור Waze / Maps הפועם לניווט למקום ההעמסה!' 
+                        : 'הסטטוס שונה ל"בדרך ליעד" - לחץ על כפתור Waze / Maps הפועם לניווט למקום הפריקה!'}
+                    </span>
+                  </motion.div>
+                )}
 
-                  <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedMove.destAddress)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="p-3 bg-navy-950 hover:bg-navy-900 border border-navy-800 rounded-xl text-center flex flex-col items-center gap-1 transition-all group cursor-pointer hover:border-emerald-500"
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Origin Navigation Card */}
+                  <div
+                    className={`p-3.5 bg-navy-950 border rounded-xl flex flex-col justify-between gap-2.5 transition-all relative overflow-hidden ${
+                      activeJobStatus === 'en_route_to_origin'
+                        ? 'border-orange-electric ring-2 ring-orange-electric/80 shadow-lg shadow-orange-500/20 bg-gradient-to-br from-orange-electric/15 via-navy-950 to-navy-950 animate-pulse'
+                        : 'border-navy-800 hover:border-orange-electric/50'
+                    }`}
                   >
-                    <Navigation className="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform" />
-                    <span className="text-xs font-bold text-white">נווט ליעד ב-Maps</span>
-                    <span className="text-[9px] text-gray-400">כתובת פריקה</span>
-                  </a>
+                    <div className="flex items-start justify-between gap-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className={`w-4 h-4 ${activeJobStatus === 'en_route_to_origin' ? 'text-orange-electric animate-bounce' : 'text-orange-electric'}`} />
+                        <div>
+                          <span className="text-xs font-bold text-white block">נקודת מוצא (העמסה)</span>
+                          <span className="text-[10px] text-gray-400 block truncate max-w-[130px]">{selectedMove.originAddress}</span>
+                        </div>
+                      </div>
+                      {activeJobStatus === 'en_route_to_origin' && (
+                        <span className="text-[9px] font-extrabold text-orange-electric bg-orange-electric/20 border border-orange-electric/40 px-1.5 py-0.5 rounded-md animate-pulse">
+                          פעימה פעילה 🚀
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-navy-850/80">
+                      <a
+                        href={`https://waze.com/ul?q=${encodeURIComponent(selectedMove.originAddress)}&navigate=yes`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`py-2 px-2 rounded-lg text-center font-bold text-xs flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                          activeJobStatus === 'en_route_to_origin'
+                            ? 'bg-orange-electric hover:bg-orange-hover text-white shadow-md shadow-orange-500/40 animate-pulse scale-102'
+                            : 'bg-navy-900 hover:bg-navy-800 text-gray-200 border border-navy-750'
+                        }`}
+                      >
+                        <MapPin className="w-3.5 h-3.5 text-white" />
+                        <span>Waze</span>
+                      </a>
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedMove.originAddress)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`py-2 px-2 rounded-lg text-center font-bold text-xs flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                          activeJobStatus === 'en_route_to_origin'
+                            ? 'bg-navy-900 hover:bg-navy-800 text-orange-electric border-2 border-orange-electric animate-pulse scale-102'
+                            : 'bg-navy-900 hover:bg-navy-800 text-gray-300 border border-navy-750'
+                        }`}
+                      >
+                        <Navigation className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Maps</span>
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Destination Navigation Card */}
+                  <div
+                    className={`p-3.5 bg-navy-950 border rounded-xl flex flex-col justify-between gap-2.5 transition-all relative overflow-hidden ${
+                      activeJobStatus === 'en_route_to_dest'
+                        ? 'border-emerald-500 ring-2 ring-emerald-500/80 shadow-lg shadow-emerald-500/20 bg-gradient-to-br from-emerald-500/15 via-navy-950 to-navy-950 animate-pulse'
+                        : 'border-navy-800 hover:border-emerald-500/50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <Navigation className={`w-4 h-4 ${activeJobStatus === 'en_route_to_dest' ? 'text-emerald-400 animate-bounce' : 'text-emerald-400'}`} />
+                        <div>
+                          <span className="text-xs font-bold text-white block">נקודת יעד (פריקה)</span>
+                          <span className="text-[10px] text-gray-400 block truncate max-w-[130px]">{selectedMove.destAddress}</span>
+                        </div>
+                      </div>
+                      {activeJobStatus === 'en_route_to_dest' && (
+                        <span className="text-[9px] font-extrabold text-emerald-400 bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.5 rounded-md animate-pulse">
+                          פעימה פעילה 🚀
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-navy-850/80">
+                      <a
+                        href={`https://waze.com/ul?q=${encodeURIComponent(selectedMove.destAddress)}&navigate=yes`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`py-2 px-2 rounded-lg text-center font-bold text-xs flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                          activeJobStatus === 'en_route_to_dest'
+                            ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-md shadow-emerald-500/40 animate-pulse scale-102'
+                            : 'bg-navy-900 hover:bg-navy-800 text-gray-300 border border-navy-750'
+                        }`}
+                      >
+                        <MapPin className="w-3.5 h-3.5 text-white" />
+                        <span>Waze</span>
+                      </a>
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedMove.destAddress)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`py-2 px-2 rounded-lg text-center font-bold text-xs flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                          activeJobStatus === 'en_route_to_dest'
+                            ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-md shadow-emerald-500/40 animate-pulse scale-102'
+                            : 'bg-navy-900 hover:bg-navy-800 text-gray-200 border border-navy-750'
+                        }`}
+                      >
+                        <Navigation className="w-3.5 h-3.5 text-white" />
+                        <span>Maps</span>
+                      </a>
+                    </div>
+                  </div>
                 </div>
               </div>
 

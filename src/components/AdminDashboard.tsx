@@ -10,6 +10,7 @@ import { MoveRequest, CRMLead, MoveStatus, PaymentStatus } from '../types';
 import LiveMap from './LiveMap';
 import FleetManager from './FleetManager';
 import OperationalChat from './OperationalChat';
+import MoveCountdownTimer from './MoveCountdownTimer';
 
 export default function AdminDashboard() {
   const [moves, setMoves] = useState<MoveRequest[]>([]);
@@ -608,6 +609,17 @@ export default function AdminDashboard() {
                       <span>סטטוס תשלום:</span>
                       <p className="text-orange-electric font-medium mt-0.5 font-semibold">{getPaymentStatusLabel(move.paymentStatus)}</p>
                     </div>
+                  </div>
+
+                  {/* Task Board Countdown timer pill */}
+                  <div className="mt-3 pt-2.5 border-t border-navy-800/40 flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-gray-400 font-medium">זמן יציאה משוער לשטח:</span>
+                    <MoveCountdownTimer 
+                      moveDate={move.moveDate} 
+                      moveTime={move.moveTime} 
+                      status={move.status} 
+                      variant="compact" 
+                    />
                   </div>
                 </div>
               );
@@ -1276,6 +1288,18 @@ export default function AdminDashboard() {
                     </button>
                   </div>
                 </div>
+
+                {/* Real-time move countdown timer banner with colorful alert */}
+                <MoveCountdownTimer 
+                  moveDate={selectedMove.moveDate}
+                  moveTime={selectedMove.moveTime}
+                  status={selectedMove.status}
+                  variant="banner"
+                  title="טיימר ספירה לאחור להובלה המתוכננת"
+                  clientName={selectedMove.clientName}
+                  originAddress={selectedMove.originAddress}
+                  showSimulateToggle={true}
+                />
 
                 {/* Status Update Messages (Error/Success) */}
                 {actionError && (

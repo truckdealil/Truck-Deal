@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { MoveRequest, DriverBid } from '../types';
 import DigitalDeliveryNote from './DigitalDeliveryNote';
 import DriverFieldApp from './DriverFieldApp';
+import MoveCountdownTimer from './MoveCountdownTimer';
 
 interface DriverBidPageProps {
   initialMoveId: string | null;
@@ -316,6 +317,17 @@ export default function DriverBidPage({ initialMoveId, onBidSubmitted }: DriverB
           {/* Main info card */}
           <div className="bg-navy-900 border border-navy-800 rounded-2xl p-6 space-y-6">
             <h3 className="font-bold text-white text-lg border-b border-navy-800 pb-2">פרטי ההובלה והנתיב</h3>
+
+            {/* Scheduled Departure Countdown Timer */}
+            <MoveCountdownTimer 
+              moveDate={move.moveDate}
+              moveTime={move.moveTime}
+              status={move.status}
+              variant="banner"
+              title="ספירה לאחור לשעת ההובלה המתוכננת"
+              originAddress={move.originAddress}
+              showSimulateToggle={true}
+            />
             
             {move.isPaymentLocked && (
               <div className="p-4 bg-orange-electric/15 border border-orange-electric/30 rounded-xl flex items-start gap-3 text-right">

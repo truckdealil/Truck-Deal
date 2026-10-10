@@ -264,8 +264,159 @@ app.get('/api/health', (req, res) => {
 });
 
 // GET all move requests
+const getSeedMoves = () => {
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+  
+  // Job 1: Scheduled today in 45 minutes! (Triggers colorful <1h alert immediately)
+  const in45Min = new Date(now.getTime() + 45 * 60 * 1000);
+  const time1 = `${in45Min.getHours().toString().padStart(2, '0')}:${in45Min.getMinutes().toString().padStart(2, '0')}`;
+  
+  // Job 2: Scheduled today in 3.5 hours
+  const in3Hours = new Date(now.getTime() + 3.5 * 60 * 60 * 1000);
+  const time2 = `${in3Hours.getHours().toString().padStart(2, '0')}:${in3Hours.getMinutes().toString().padStart(2, '0')}`;
+
+  // Job 3: Scheduled tomorrow morning
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+  return [
+    {
+      id: 'move_urgent45m',
+      clientName: 'רונן אברהם',
+      clientPhone: '050-1122334',
+      clientEmail: 'ronen.moving@gmail.com',
+      companyName: 'סטארטאפ טק סולושנס',
+      originAddress: 'אבן גבירול 104, תל אביב',
+      destAddress: 'רוטשילד 45, ראשון לציון',
+      moveDate: todayStr,
+      moveTime: time1,
+      moveType: 'apartment',
+      floor: 3,
+      hasElevator: true,
+      elevatorDetails: { sofaFits: true, fridgeFits: true },
+      truckAccess: 'easy',
+      craneNeeded: 'no',
+      items: [
+        { id: 'sofa_3', name: 'ספה 3 מושבים', category: 'furniture', quantity: 1 },
+        { id: 'double_bed', name: 'מיטה זוגית + מזרן', category: 'furniture', quantity: 1 },
+        { id: 'fridge_big', name: 'מקרר גדול', category: 'appliances', quantity: 1 },
+        { id: 'boxes', name: 'ארגזים ארוזים', category: 'boxes', quantity: 20 }
+      ],
+      images: [],
+      createdAt: new Date().toISOString(),
+      status: 'approved_for_driver',
+      paymentStatus: 'paid_deposit',
+      clientApprovedForBilling: true,
+      assignedDriverId: 'driver_1',
+      assignedDriverName: 'יוסי לוי',
+      assignedDriverPhone: '052-8765432',
+      assignedTruckModel: 'משאית 7.5 טון + רמפה הידראולית',
+      assignedTruckLicense: '88-442-19',
+      driverBids: [
+        {
+          id: 'bid_1',
+          driverName: 'יוסי לוי',
+          driverPhone: '052-8765432',
+          bidAmount: 1850,
+          estimatedDuration: '3-4 שעות',
+          submittedAt: new Date().toISOString(),
+          status: 'approved'
+        }
+      ],
+      finalApprovedBidId: 'bid_1',
+      aiAnalysis: {
+        estimatedPriceRange: '1,800 - 2,200 ₪',
+        difficultyScore: 4,
+        recommendations: ['ציוד קשירה מלא', 'עגלת שינוע לרמפה'],
+        summary: 'הובלת דירת 2 חדרים קלאסית עם מעלית גדולה ונגישות משאית נוחה'
+      }
+    },
+    {
+      id: 'move_afternoon3h',
+      clientName: 'שירה כהן',
+      clientPhone: '054-9876543',
+      clientEmail: 'shira.cohen@gmail.com',
+      originAddress: 'ויצמן 22, גבעתיים',
+      destAddress: 'הרצל 80, רמת גן',
+      moveDate: todayStr,
+      moveTime: time2,
+      moveType: 'apartment',
+      floor: 4,
+      hasElevator: true,
+      elevatorDetails: { sofaFits: true, fridgeFits: false },
+      truckAccess: 'medium',
+      craneNeeded: 'no',
+      items: [
+        { id: 'dining_table', name: 'שולחן אוכל + כיסאות', category: 'furniture', quantity: 1 },
+        { id: 'wardrobe_big', name: 'ארון בגדים גדול', category: 'furniture', quantity: 1 },
+        { id: 'boxes', name: 'ארגזים', category: 'boxes', quantity: 15 }
+      ],
+      images: [],
+      createdAt: new Date().toISOString(),
+      status: 'approved_for_driver',
+      paymentStatus: 'paid_full',
+      clientApprovedForBilling: true,
+      assignedDriverId: 'driver_1',
+      assignedDriverName: 'יוסי לוי',
+      assignedDriverPhone: '052-8765432',
+      assignedTruckModel: 'משאית 7.5 טון + רמפה הידראולית',
+      assignedTruckLicense: '88-442-19',
+      driverBids: [],
+      aiAnalysis: {
+        estimatedPriceRange: '1,500 - 1,900 ₪',
+        difficultyScore: 5,
+        recommendations: ['פירוק והרכבת ארון מומלצת'],
+        summary: 'הובלת חדר שינה ופינת אוכל'
+      }
+    },
+    {
+      id: 'move_tomorrow',
+      clientName: 'דניאל גרינברג',
+      clientPhone: '052-3344556',
+      clientEmail: 'daniel.g@techcorp.co.il',
+      companyName: 'גרינברג ייעוץ עסקי',
+      originAddress: 'מנחם בגין 144, תל אביב',
+      destAddress: 'שדרות ירושלים 18, יפו',
+      moveDate: tomorrowStr,
+      moveTime: '09:00',
+      moveType: 'office',
+      floor: 8,
+      hasElevator: true,
+      elevatorDetails: { sofaFits: true, fridgeFits: true },
+      truckAccess: 'easy',
+      craneNeeded: 'no',
+      items: [
+        { id: 'desk', name: 'שולחן כתיבה / עבודה', category: 'furniture', quantity: 6 },
+        { id: 'boxes', name: 'ארגזי קלסרים וציוד', category: 'boxes', quantity: 30 }
+      ],
+      images: [],
+      createdAt: new Date().toISOString(),
+      status: 'approved_for_driver',
+      paymentStatus: 'paid_deposit',
+      clientApprovedForBilling: true,
+      assignedDriverId: 'driver_2',
+      assignedDriverName: 'אבי כהן',
+      assignedDriverPhone: '054-1234567',
+      assignedTruckModel: 'משאית 12 טון + מנוף קבועה קומה 6',
+      assignedTruckLicense: '12-345-67',
+      driverBids: [],
+      aiAnalysis: {
+        estimatedPriceRange: '2,800 - 3,500 ₪',
+        difficultyScore: 6,
+        recommendations: ['שימוש בעגלות משא ייעודיות למשרד'],
+        summary: 'הובלת משרד 6 עמדות עבודה'
+      }
+    }
+  ];
+};
+
 app.get('/api/moves', (req, res) => {
-  const moves = readDatabase(MOVES_FILE);
+  let moves = readDatabase<any>(MOVES_FILE);
+  if (!moves || moves.length === 0) {
+    moves = getSeedMoves();
+    writeDatabase(MOVES_FILE, moves);
+  }
   res.json(moves);
 });
 
