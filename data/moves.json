@@ -1,5 +1,80 @@
 [
   {
+    "id": "move_9qh1hsz3o",
+    "clientName": "אבי לוי",
+    "clientPhone": "0508860896",
+    "clientEmail": "noa.hsaban94@gmail.com",
+    "companyName": "",
+    "originAddress": "החרש 10, הוד השרון",
+    "destAddress": "סטרומה 4 הרצליה ",
+    "moveDate": "2026-10-12",
+    "moveTime": "בוקר (07:00 - 12:00)",
+    "moveType": "apartment",
+    "floor": 4,
+    "hasElevator": false,
+    "elevatorDetails": {
+      "sofaFits": true,
+      "fridgeFits": true
+    },
+    "truckAccess": "easy",
+    "craneNeeded": "yes",
+    "items": [
+      {
+        "id": "sofa_3",
+        "name": "סלון (מערכת ישיבה)",
+        "category": "furniture",
+        "quantity": 1
+      },
+      {
+        "id": "fridge_big",
+        "name": "מקרר משפחתי",
+        "category": "appliances",
+        "quantity": 1
+      },
+      {
+        "id": "washing_machine",
+        "name": "מכונת כביסה",
+        "category": "appliances",
+        "quantity": 1
+      },
+      {
+        "id": "box_standard",
+        "name": "ארגזי קרטון לאריזה",
+        "category": "boxes",
+        "quantity": 10
+      }
+    ],
+    "images": [],
+    "notes": "",
+    "createdAt": "2026-10-11T03:11:12.618Z",
+    "status": "bidding",
+    "paymentStatus": "pending_payment",
+    "clientApprovedForBilling": false,
+    "driverBids": [
+      {
+        "id": "bid_f96t4usss",
+        "driverName": "חכמת",
+        "driverPhone": "0508861080",
+        "bidAmount": 2508,
+        "estimatedDuration": "3-4 שעות",
+        "notes": "לא כולל עיכובים",
+        "submittedAt": "2026-10-11T03:22:29.934Z",
+        "status": "pending"
+      }
+    ],
+    "aiAnalysis": {
+      "estimatedPriceRange": "₪1,800 - ₪2,400",
+      "difficultyScore": 6,
+      "recommendations": [
+        "יש לתאם ולשריין שטח חנייה פנוי ומרווח עבור משאית המנוף מתחת לחלון או המרפסת בקומה 4.",
+        "חובה לעטוף באופן מקצועי את הספה, המקרר ומכונת הכביסה בניילון נצמד ופצפצים להגנה בעת ההנפה במנוף.",
+        "יש לנתק את המקרר ומכונת הכביסה לפחות מספר שעות לפני ההובלה ולנקז נוזלים למניעת נזקים.",
+        "מומלץ למדוד מראש את פתח החלון/מרפסת בקומה 4 כדי לוודא שאינטגרציית המעבר של המקרר והספה תתבצע חלק."
+      ],
+      "summary": "הובלת תכולה קטנה מהוד השרון להרצליה הכוללת 3 פריטים כבדים ו-10 ארגזים. בשל קומה 4 ללא מעלית, ההובלה מתבצעת באמצעות מנוף הרמה חיצוני. הנגישות הקלה לחנייה תסייע בתפעול מהיר ובטוח של המנוף."
+    }
+  },
+  {
     "id": "move_urgent45m",
     "clientName": "רונן אברהם",
     "clientPhone": "050-1122334",
@@ -305,6 +380,49 @@
         "מעקב דיגיטלי בזמן אמת פעיל"
       ],
       "summary": "כרטיס הובלה ומכרז [TRK-9154] שודר בהצלחה"
+    }
+  },
+  {
+    "id": "TRK-3921",
+    "clientName": "לקוח Truk Dealil IL",
+    "clientPhone": "050-1234567",
+    "clientEmail": "truck.dealil@gmail.com",
+    "companyName": "",
+    "originAddress": "אזור המרכז, קומה 2",
+    "destAddress": "יעד פריקה, קומה 2",
+    "moveDate": "2026-10-12",
+    "moveTime": "10:00",
+    "moveType": "apartment",
+    "floor": 2,
+    "hasElevator": true,
+    "elevatorDetails": {
+      "sofaFits": true,
+      "fridgeFits": true
+    },
+    "truckAccess": "easy",
+    "craneNeeded": "no",
+    "items": [
+      {
+        "id": "item_disp_1",
+        "name": "תכולת הובלה מלאה לפי אפיון סדרן AI",
+        "category": "furniture",
+        "quantity": 1
+      }
+    ],
+    "images": [],
+    "createdAt": "2026-10-11T03:48:56.645Z",
+    "status": "bidding",
+    "paymentStatus": "pending_deposit",
+    "clientApprovedForBilling": false,
+    "driverBids": [],
+    "aiAnalysis": {
+      "estimatedPriceRange": "₪2,000 - ₪2,800",
+      "difficultyScore": 5,
+      "recommendations": [
+        "מכרז פתוח לנהגים וספקים מורשים",
+        "מעקב דיגיטלי בזמן אמת פעיל"
+      ],
+      "summary": "כרטיס הובלה ומכרז [TRK-3921] שודר בהצלחה"
     }
   }
 ]

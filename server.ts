@@ -21,6 +21,31 @@ app.use((req, res, next) => {
   next();
 });
 
+// Normalize incoming path for Vercel Serverless environment:
+// Handles cases where Vercel rewrites stripped /api or where headers contain the original route
+app.use((req, res, next) => {
+  const possiblePaths = [
+    req.headers['x-matched-path'] as string,
+    req.headers['x-invoke-path'] as string,
+    req.headers['x-forwarded-uri'] as string,
+    req.originalUrl
+  ];
+  const original = possiblePaths.find(p => p && typeof p === 'string' && p.startsWith('/api') && p !== '/api');
+  if (original && (req.url === '/api' || req.url === '/')) {
+    req.url = original;
+  } else if (
+    req.url &&
+    !req.url.startsWith('/api') &&
+    req.url !== '/' &&
+    !req.url.startsWith('/index.html') &&
+    !req.url.startsWith('/sw.js') &&
+    !req.url.startsWith('/manifest.json')
+  ) {
+    req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
+  }
+  next();
+});
+
 // Explicit route for Service Worker to ensure exact javascript mime type
 app.get('/sw.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript; charset=UTF-8');
@@ -97,12 +122,27 @@ const syncGlobalCache = (fileName: string, data: any[]) => {
   else if (fileName === 'concierge_chats.json') conciergeChatsCache = data;
 };
 
+// Candidate directories for seed data
+const findSeedFilePath = (fileName: string): string | null => {
+  const candidates = [
+    path.join(process.cwd(), 'data', fileName),
+    path.resolve('./data', fileName),
+    path.join('/var/task', 'data', fileName)
+  ];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {}
+  }
+  return null;
+};
+
 // Resilient Helper to read database (Memory Cache -> /tmp File -> Project seed file -> Defaults)
 const readDatabase = <T>(filePath: string, defaultValue: any = []): T[] => {
   const fileName = path.basename(filePath);
 
   // 1. If available in memory cache, return it
-  if (inMemoryCache[fileName] && inMemoryCache[fileName].length > 0) {
+  if (inMemoryCache[fileName] !== undefined) {
     return inMemoryCache[fileName] as T[];
   }
 
@@ -110,60 +150,57 @@ const readDatabase = <T>(filePath: string, defaultValue: any = []): T[] => {
     // 2. Try reading from target path (e.g. /tmp/moves.json or data/moves.json)
     if (fs.existsSync(filePath)) {
       const data = fs.readFileSync(filePath, 'utf-8');
-      const parsed = JSON.parse(data) as T[];
+      const parsed = JSON.parse(data);
       inMemoryCache[fileName] = parsed;
-      syncGlobalCache(fileName, parsed);
-      return parsed;
+      syncGlobalCache(fileName, Array.isArray(parsed) ? parsed : [parsed]);
+      return parsed as T[];
     }
 
     // 3. In Vercel / serverless environment, if /tmp doesn't have the file yet, seed from project repository data/
-    if (IS_VERCEL) {
-      const seedFilePath = path.join(SEED_DATA_DIR, fileName);
-      if (fs.existsSync(seedFilePath)) {
-        try {
-          const seedContent = fs.readFileSync(seedFilePath, 'utf-8');
-          const parsed = JSON.parse(seedContent) as T[];
-          inMemoryCache[fileName] = parsed;
-          syncGlobalCache(fileName, parsed);
+    const seedFilePath = findSeedFilePath(fileName);
+    if (seedFilePath) {
+      try {
+        const seedContent = fs.readFileSync(seedFilePath, 'utf-8');
+        const parsed = JSON.parse(seedContent);
+        inMemoryCache[fileName] = parsed;
+        syncGlobalCache(fileName, Array.isArray(parsed) ? parsed : [parsed]);
 
-          // Write to /tmp for subsequent reads
-          try {
-            fs.writeFileSync(filePath, seedContent, 'utf-8');
-          } catch (writeErr) {
-            console.warn(`[Storage] Could not seed file ${filePath}:`, writeErr);
-          }
-          return parsed;
-        } catch (seedErr) {
-          console.warn(`[Storage] Error loading seed file ${seedFilePath}:`, seedErr);
+        // Write to /tmp for subsequent reads
+        try {
+          fs.writeFileSync(filePath, seedContent, 'utf-8');
+        } catch (writeErr) {
+          // safe to ignore on read-only FS
         }
+        return parsed as T[];
+      } catch (seedErr) {
+        console.warn(`[Storage] Error loading seed file ${seedFilePath}:`, seedErr);
       }
     }
 
     // 4. Default fallback: write default value if possible and cache in memory
     inMemoryCache[fileName] = defaultValue;
-    syncGlobalCache(fileName, defaultValue);
+    syncGlobalCache(fileName, Array.isArray(defaultValue) ? defaultValue : [defaultValue]);
     try {
       fs.writeFileSync(filePath, JSON.stringify(defaultValue, null, 2));
     } catch (writeErr) {
       // EROFS or filesystem restriction - safe to ignore since memory cache is active
-      console.warn(`[Storage] Filesystem write ignored for ${filePath}. Retained in memory.`);
     }
     return defaultValue;
   } catch (error: any) {
     console.error(`[Storage] Error reading database file ${filePath}:`, error?.message || error);
-    const fallback = inMemoryCache[fileName] || defaultValue;
+    const fallback = inMemoryCache[fileName] !== undefined ? inMemoryCache[fileName] : defaultValue;
     inMemoryCache[fileName] = fallback;
-    syncGlobalCache(fileName, fallback);
+    syncGlobalCache(fileName, Array.isArray(fallback) ? fallback : [fallback]);
     return fallback as T[];
   }
 };
 
 // Resilient Helper to write database (Always updates In-Memory Cache first, then writes to disk with EROFS protection)
-const writeDatabase = <T>(filePath: string, data: T[]): void => {
+const writeDatabase = <T>(filePath: string, data: any): void => {
   const fileName = path.basename(filePath);
   // Guarantee memory update immediately
   inMemoryCache[fileName] = data;
-  syncGlobalCache(fileName, data);
+  syncGlobalCache(fileName, Array.isArray(data) ? data : [data]);
 
   try {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
@@ -186,7 +223,7 @@ if (process.env.GEMINI_API_KEY) {
 }
 
 // Helper to call Gemini with a fallback model (e.g. gemini-3.1-flash-lite) if the primary model is busy or unavailable
-const callGeminiWithFallback = async (contents: string, primaryModel: string = 'gemini-3.5-flash', fallbackModel: string = 'gemini-3.1-flash-lite') => {
+const callGeminiWithFallback = async (contents: string, primaryModel: string = 'gemini-3.8-flash', fallbackModel: string = 'gemini-3.1-flash-lite') => {
   if (!ai) {
     throw new Error('Gemini client not initialized');
   }
