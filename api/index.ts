@@ -252,19 +252,39 @@ const callGeminiWithFallback = async (contents: string, primaryModel: string = '
   }
 };
 
-// Google Apps Script Webhook URL
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxFuwvPovPthoFJ8E237r8Tdo2PuDbOw9FvjtDCyr2kHgkQX-VG8lglUej7zqFv0FsI/exec';
+// Google Apps Script Webhook URL & Google Sheet ID
+const DEFAULT_GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyDiRrXdNdcYaa9VY29x6qVsumayrOBD0yHzEHosbuncvsRd-mNSaM_xEenhThsANN-/exec';
+const DEFAULT_GOOGLE_SHEET_ID = '1Hch4csBenIwr9vt6XlyzTQ0z88LIo1917w0NPYKXqTc';
+
+// Helper to get Google Sheet Integration settings
+const getGoogleScriptSettings = () => {
+  let scriptUrl = process.env.GOOGLE_SCRIPT_URL || DEFAULT_GOOGLE_SCRIPT_URL;
+  let sheetId = process.env.GOOGLE_SHEET_ID || DEFAULT_GOOGLE_SHEET_ID;
+  try {
+    const raw = readDatabase<any>(SETTINGS_FILE, {});
+    const settings = Array.isArray(raw) ? raw[0] : raw;
+    if (settings) {
+      if (settings.googleScriptUrl) scriptUrl = settings.googleScriptUrl;
+      if (settings.googleSheetId) sheetId = settings.googleSheetId;
+    }
+  } catch {}
+  return { scriptUrl, sheetId };
+};
 
 // Send lead/move data to Google Apps Script
 const sendToGoogleAppsScript = async (payload: any) => {
   try {
-    console.log('Sending data to Google Apps Script Webhook...');
-    const response = await fetch(GOOGLE_SCRIPT_URL, {
+    const { scriptUrl, sheetId } = getGoogleScriptSettings();
+    if (!scriptUrl) return;
+    const finalPayload = { ...payload, sheetId: payload.sheetId || sheetId };
+    console.log('Sending data to Google Apps Script Webhook:', scriptUrl);
+    const response = await fetch(scriptUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(finalPayload),
     });
     console.log('Google Apps Script response status:', response.status);
+    return response.status;
   } catch (error) {
     console.error('Error sending webhook to Google Apps Script:', error);
   }
@@ -568,12 +588,47 @@ const getSeedMoves = () => {
 };
 
 app.get('/api/moves', (req, res) => {
-  let moves = readDatabase<any>(MOVES_FILE);
-  if (!moves || moves.length === 0) {
-    moves = getSeedMoves();
-    writeDatabase(MOVES_FILE, moves);
+  const moves = readDatabase<any>(MOVES_FILE, []);
+  res.json(moves || []);
+});
+
+// DELETE a specific move request by ID
+app.delete('/api/moves/:id', (req, res) => {
+  try {
+    const moves = readDatabase<any>(MOVES_FILE, []);
+    const initialLength = moves.length;
+    const filtered = moves.filter((m: any) => m.id !== req.params.id);
+    writeDatabase(MOVES_FILE, filtered);
+    res.json({ success: true, deleted: initialLength - filtered.length, id: req.params.id });
+  } catch (error) {
+    console.error('Error deleting move:', error);
+    res.status(500).json({ error: 'שגיאה במחיקת ההובלה' });
   }
-  res.json(moves);
+});
+
+// Clear all dummy/mock moves
+app.post('/api/moves/clear-dummy', (req, res) => {
+  try {
+    const dummyIds = ['move_urgent45m', 'move_afternoon3h', 'move_tomorrow', 'TRK-9154', 'TRK-3921'];
+    const moves = readDatabase<any>(MOVES_FILE, []);
+    const filtered = moves.filter((m: any) => !dummyIds.includes(m.id) && !m.id.startsWith('TRK-'));
+    writeDatabase(MOVES_FILE, filtered);
+    res.json({ success: true, count: filtered.length, cleared: moves.length - filtered.length });
+  } catch (error) {
+    console.error('Error clearing dummy moves:', error);
+    res.status(500).json({ error: 'שגיאה במחיקת הזמנות דמה' });
+  }
+});
+
+// Delete all moves / reset to clean slate
+app.delete('/api/moves', (req, res) => {
+  try {
+    writeDatabase(MOVES_FILE, []);
+    res.json({ success: true, count: 0, cleared: true });
+  } catch (error) {
+    console.error('Error resetting moves:', error);
+    res.status(500).json({ error: 'שגיאה באיפוס הזמנות' });
+  }
 });
 
 // GET a single move request
@@ -1457,8 +1512,14 @@ app.delete('/api/drivers/:id', (req, res) => {
 // GET application settings
 app.get('/api/settings', (req, res) => {
   try {
-    const raw = readDatabase<any>(SETTINGS_FILE, [{ makeWebhookUrl: '' }]);
-    const settings = Array.isArray(raw) ? (raw[0] || { makeWebhookUrl: '' }) : (raw || { makeWebhookUrl: '' });
+    const raw = readDatabase<any>(SETTINGS_FILE, {});
+    const parsed = Array.isArray(raw) ? (raw[0] || {}) : (raw || {});
+    const settings = {
+      makeWebhookUrl: parsed.makeWebhookUrl || 'https://hook.eu1.make.com/your-custom-webhook-endpoint-truk-dealil',
+      googleScriptUrl: parsed.googleScriptUrl || DEFAULT_GOOGLE_SCRIPT_URL,
+      googleSheetId: parsed.googleSheetId || DEFAULT_GOOGLE_SHEET_ID,
+      ...parsed
+    };
     res.json(settings);
   } catch (error) {
     console.error('Error fetching settings:', error);
@@ -1469,7 +1530,9 @@ app.get('/api/settings', (req, res) => {
 // POST update application settings
 app.post('/api/settings', (req, res) => {
   try {
-    const newSettings = req.body || {};
+    const raw = readDatabase<any>(SETTINGS_FILE, {});
+    const current = Array.isArray(raw) ? (raw[0] || {}) : (raw || {});
+    const newSettings = { ...current, ...(req.body || {}) };
     writeDatabase(SETTINGS_FILE, [newSettings]);
     res.json({ success: true, settings: newSettings });
   } catch (error) {
@@ -1730,6 +1793,58 @@ app.post('/api/settings/test-webhook', async (req, res) => {
   } catch (error: any) {
     console.error('Webhook manual test failed:', error);
     res.status(500).json({ error: `החיבור נכשל: ${error.message}` });
+  }
+});
+
+// POST test Google Sheets Webhook connection
+app.post('/api/settings/test-google-sheet', async (req, res) => {
+  try {
+    const { scriptUrl, sheetId } = req.body || {};
+    const { scriptUrl: resolvedUrl, sheetId: resolvedSheetId } = getGoogleScriptSettings();
+    const targetUrl = scriptUrl || resolvedUrl;
+    const targetSheetId = sheetId || resolvedSheetId;
+
+    if (!targetUrl) {
+      return res.status(400).json({ error: 'כתובת Web App של Google Apps Script לא הוגדרה' });
+    }
+
+    const testPayload = {
+      action: 'test_connection',
+      sheetId: targetSheetId,
+      timestamp: new Date().toISOString(),
+      source: 'טראק דיל il - לוח בקרה'
+    };
+
+    console.log('Testing Google Apps Script Webhook at:', targetUrl);
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(testPayload)
+    });
+
+    const text = await response.text();
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = { message: text };
+    }
+
+    const isConnected = response.ok && (parsed?.status === 'success' || parsed?.message?.includes('Unknown action') || parsed?.message?.includes('חיבור') || text?.length > 0);
+
+    res.json({
+      success: isConnected,
+      status: response.status,
+      response: {
+        ...parsed,
+        message: isConnected ? 'חיבור פעיל ומאומת מול Google Apps Script & Google Sheets' : (parsed?.message || text)
+      },
+      sheetId: targetSheetId,
+      sheetUrl: `https://docs.google.com/spreadsheets/d/${targetSheetId}/edit`
+    });
+  } catch (error: any) {
+    console.error('Google Sheet test failed:', error);
+    res.status(500).json({ error: `בדיקת החיבור לגיליון נכשלה: ${error.message}` });
   }
 });
 

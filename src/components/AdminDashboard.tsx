@@ -48,6 +48,9 @@ export default function AdminDashboard() {
   // Webhook custom test tool state
   const [webhookTestLoading, setWebhookTestLoading] = useState(false);
   const [webhookTestStatus, setWebhookTestStatus] = useState<any>(null);
+  const [googleSheetTestLoading, setGoogleSheetTestLoading] = useState(false);
+  const [googleSheetTestStatus, setGoogleSheetTestStatus] = useState<any>(null);
+  const [clearDummyLoading, setClearDummyLoading] = useState(false);
 
   useEffect(() => {
     fetchAdminData();
@@ -149,8 +152,8 @@ export default function AdminDashboard() {
   };
 
   // Settings update
-  const handleSaveSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveSettings = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setActionLoading(true);
     try {
       const response = await fetch('/api/settings', {
@@ -159,11 +162,81 @@ export default function AdminDashboard() {
         body: JSON.stringify(settings)
       });
       if (!response.ok) throw new Error('עדכון הגדרות נכשל');
-      alert('כתובת ה-Webhook ל-Make.com עודכנה בהצלחה!');
+      alert('הגדרות המערכת עודכנו בהצלחה!');
     } catch (err: any) {
       alert(err.message || 'שגיאה בעדכון הגדרות');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // Google Sheets live test
+  const handleTestGoogleSheet = async () => {
+    setGoogleSheetTestLoading(true);
+    setGoogleSheetTestStatus(null);
+    try {
+      const response = await fetch('/api/settings/test-google-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scriptUrl: settings.googleScriptUrl,
+          sheetId: settings.googleSheetId
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'בדיקת החיבור לגיליון נכשלה');
+      }
+      setGoogleSheetTestStatus({
+        success: true,
+        status: response.status,
+        message: data.response?.message || 'חיבור פעיל ומסונכרן מול Google Sheets',
+        sheetUrl: data.sheetUrl
+      });
+    } catch (err: any) {
+      setGoogleSheetTestStatus({ success: false, error: err.message });
+    } finally {
+      setGoogleSheetTestLoading(false);
+    }
+  };
+
+  // Delete a specific move
+  const handleDeleteMove = async (moveId: string) => {
+    if (!window.confirm(`האם אתה בטוח שברצונך למחוק את הובלה #${moveId}?`)) return;
+    try {
+      const res = await fetch(`/api/moves/${moveId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setMoves(prev => prev.filter(m => m.id !== moveId));
+        if (selectedMove?.id === moveId) setSelectedMove(null);
+        alert('ההובלה נמחקה בהצלחה!');
+      } else {
+        alert('שגיאה במחיקת ההובלה');
+      }
+    } catch (err) {
+      alert('שגיאת תקשורת במחיקת ההובלה');
+    }
+  };
+
+  // Clear dummy / test moves
+  const handleClearDummyMoves = async () => {
+    if (!window.confirm('האם לאפס ולמחוק את כל הזמנות הדמה והבדיקות מהמערכת? הנתונים יאופסו למצב נקי ומסונכרן מול הגיליון.')) return;
+    setClearDummyLoading(true);
+    try {
+      const res = await fetch('/api/moves/clear-dummy', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        const refreshRes = await fetch('/api/moves');
+        const refreshedMoves = await refreshRes.json();
+        setMoves(refreshedMoves);
+        setSelectedMove(null);
+        alert(`הזמנות הדמה נמחקו בהצלחה! נמחקו ${data.cleared || 0} הזמנות.`);
+      } else {
+        alert('שגיאה במחיקת הזמנות הדמה');
+      }
+    } catch (err) {
+      alert('שגיאת תקשורת במחיקת הזמנות הדמה');
+    } finally {
+      setClearDummyLoading(false);
     }
   };
 
@@ -475,37 +548,52 @@ export default function AdminDashboard() {
           </div>
 
           {activeTab === 'moves' && (
-            <div className="flex gap-2 w-full md:w-auto overflow-x-auto pr-1">
-              <button 
-                onClick={() => setStatusFilter('all')} 
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer shrink-0 ${statusFilter === 'all' ? 'bg-orange-electric text-white' : 'bg-navy-950 text-gray-400 border border-navy-800'}`}
-              >
-                הכל
-              </button>
-              <button 
-                onClick={() => setStatusFilter('new')} 
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer shrink-0 ${statusFilter === 'new' ? 'bg-orange-electric text-white' : 'bg-navy-950 text-gray-400 border border-navy-800'}`}
-              >
-                חדש
-              </button>
-              <button 
-                onClick={() => setStatusFilter('bidding')} 
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer shrink-0 ${statusFilter === 'bidding' ? 'bg-orange-electric text-white' : 'bg-navy-950 text-gray-400 border border-navy-800'}`}
-              >
-                במכרז
-              </button>
-              <button 
-                onClick={() => setStatusFilter('bid_approved')} 
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer shrink-0 ${statusFilter === 'bid_approved' ? 'bg-orange-electric text-white' : 'bg-navy-950 text-gray-400 border border-navy-800'}`}
-              >
-                הצעה אושרה
-              </button>
-              <button 
-                onClick={() => setStatusFilter('approved_for_driver')} 
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer shrink-0 ${statusFilter === 'approved_for_driver' ? 'bg-orange-electric text-white' : 'bg-navy-950 text-gray-400 border border-navy-800'}`}
-              >
-                שוחרר לנהג
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+              <div className="flex gap-2 overflow-x-auto pr-1">
+                <button 
+                  onClick={() => setStatusFilter('all')} 
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer shrink-0 ${statusFilter === 'all' ? 'bg-orange-electric text-white' : 'bg-navy-950 text-gray-400 border border-navy-800'}`}
+                >
+                  הכל ({moves.length})
+                </button>
+                <button 
+                  onClick={() => setStatusFilter('new')} 
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer shrink-0 ${statusFilter === 'new' ? 'bg-orange-electric text-white' : 'bg-navy-950 text-gray-400 border border-navy-800'}`}
+                >
+                  חדש
+                </button>
+                <button 
+                  onClick={() => setStatusFilter('bidding')} 
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer shrink-0 ${statusFilter === 'bidding' ? 'bg-orange-electric text-white' : 'bg-navy-950 text-gray-400 border border-navy-800'}`}
+                >
+                  במכרז
+                </button>
+                <button 
+                  onClick={() => setStatusFilter('bid_approved')} 
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer shrink-0 ${statusFilter === 'bid_approved' ? 'bg-orange-electric text-white' : 'bg-navy-950 text-gray-400 border border-navy-800'}`}
+                >
+                  הצעה אושרה
+                </button>
+                <button 
+                  onClick={() => setStatusFilter('approved_for_driver')} 
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer shrink-0 ${statusFilter === 'approved_for_driver' ? 'bg-orange-electric text-white' : 'bg-navy-950 text-gray-400 border border-navy-800'}`}
+                >
+                  שוחרר לנהג
+                </button>
+              </div>
+
+              {moves.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearDummyMoves}
+                  disabled={clearDummyLoading}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer shrink-0 bg-red-950/40 text-red-400 border border-red-500/30 hover:bg-red-900/50 flex items-center gap-1.5 transition-all"
+                  title="מחק הזמנות דמה ובדיקות כדי לאפס את המערכת למצב נקי מול הגיליון"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{clearDummyLoading ? 'מוחק הזמנות דמה...' : 'מחק הזמנות דמה / אפס מכרזים'}</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -577,15 +665,28 @@ export default function AdminDashboard() {
                       </div>
                     
                     <div className="flex flex-col items-end gap-1.5">
-                      <span className={`px-2.5 py-0.5 rounded text-[11px] font-bold ${
-                        move.status === 'new' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
-                        move.status === 'bidding' ? 'bg-orange-electric/10 text-orange-electric border border-orange-electric/20' :
-                        move.status === 'bid_approved' || move.status === 'Approved' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                        move.status === 'approved_for_driver' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                        'bg-gray-500/10 text-gray-400'
-                      }`}>
-                        {getMoveStatusLabel(move.status)}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteMove(move.id);
+                          }}
+                          title="מחק הובלה לצמיתות"
+                          className="p-1 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        <span className={`px-2.5 py-0.5 rounded text-[11px] font-bold ${
+                          move.status === 'new' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
+                          move.status === 'bidding' ? 'bg-orange-electric/10 text-orange-electric border border-orange-electric/20' :
+                          move.status === 'bid_approved' || move.status === 'Approved' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                          move.status === 'approved_for_driver' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                          'bg-gray-500/10 text-gray-400'
+                        }`}>
+                          {getMoveStatusLabel(move.status)}
+                        </span>
+                      </div>
 
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                         move.clientApprovedForBilling ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/10 text-red-400 border border-red-500/20'
@@ -931,10 +1032,113 @@ export default function AdminDashboard() {
           ) : activeTab === 'settings' ? (
             /* Integration Settings Section */
             <div className="space-y-6">
+              {/* Google Sheets Live Integration Section */}
+              <div className="bg-navy-900 border border-emerald-500/30 rounded-2xl p-6 space-y-4 text-right">
+                <div className="flex flex-wrap items-center justify-between pb-3 border-b border-navy-800 gap-3">
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={`https://docs.google.com/spreadsheets/d/${settings.googleSheetId || '1Hch4csBenIwr9vt6XlyzTQ0z88LIo1917w0NPYKXqTc'}/edit`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 font-bold rounded-lg text-xs cursor-pointer transition-all flex items-center gap-1.5"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>פתח גיליון Google Sheets חי ↗</span>
+                    </a>
+                    <span className="px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full text-[10px] font-bold">
+                      ● מחובר ומסונכרן
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-right">
+                      <h3 className="font-bold text-white text-sm">אינטגרציה וסנכרון Google Sheets (Apps Script)</h3>
+                      <p className="text-xs text-gray-400">סנכרון אוטומטי של כל הזמנה, ליד, הצעת נהג ותשלום ישירות לגיליון החי</p>
+                    </div>
+                    <FileText className="w-5 h-5 text-emerald-400" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5 text-right">
+                    <label className="text-xs font-bold text-gray-300 block">מזהה גיליון (Spreadsheet ID):</label>
+                    <input
+                      type="text"
+                      value={settings.googleSheetId || '1Hch4csBenIwr9vt6XlyzTQ0z88LIo1917w0NPYKXqTc'}
+                      onChange={(e) => setSettings({ ...settings, googleSheetId: e.target.value })}
+                      className="w-full px-4 py-2 bg-navy-950 border border-navy-700 rounded-xl text-xs text-white focus:border-emerald-500 outline-none font-mono"
+                    />
+                    <p className="text-[10px] text-gray-500">
+                      * מזהה הגיליון אליו נרשמים הנתונים (משלוחים, לידים, הצעות נהגים ואישורים).
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5 text-right">
+                    <label className="text-xs font-bold text-gray-300 block">כתובת Web App (Google Apps Script):</label>
+                    <input
+                      type="url"
+                      value={settings.googleScriptUrl || 'https://script.google.com/macros/s/AKfycbyDiRrXdNdcYaa9VY29x6qVsumayrOBD0yHzEHosbuncvsRd-mNSaM_xEenhThsANN-/exec'}
+                      onChange={(e) => setSettings({ ...settings, googleScriptUrl: e.target.value })}
+                      className="w-full px-4 py-2 bg-navy-950 border border-navy-700 rounded-xl text-xs text-white focus:border-emerald-500 outline-none font-mono"
+                    />
+                    <p className="text-[10px] text-gray-500">
+                      * כתובת ה-Web App של Google Apps Script המטפלת ב-doPost וב-doGet.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-navy-800">
+                  <button
+                    type="button"
+                    onClick={handleTestGoogleSheet}
+                    disabled={googleSheetTestLoading}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs cursor-pointer transition-all flex items-center gap-1.5"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{googleSheetTestLoading ? 'בודק חיבור מול הגיליון...' : 'בדוק חיבור וסנכרון לגיליון'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveSettings}
+                    disabled={actionLoading}
+                    className="px-4 py-2 bg-orange-electric hover:bg-orange-600 text-white font-bold rounded-lg text-xs cursor-pointer transition-all flex items-center gap-1.5"
+                  >
+                    <Settings className="w-4 h-4" />
+                    <span>שמור הגדרות גיליון</span>
+                  </button>
+                </div>
+
+                {googleSheetTestStatus && (
+                  <div className={`p-4 rounded-xl border text-right text-xs space-y-1 ${
+                    googleSheetTestStatus.success ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300' : 'bg-red-950/30 border-red-500/40 text-red-300'
+                  }`}>
+                    <div className="font-bold flex items-center justify-end gap-1.5">
+                      <span>{googleSheetTestStatus.success ? '✓ החיבור ל-Google Sheets תקין ופעיל!' : '✗ שגיאה בחיבור ל-Google Sheets'}</span>
+                    </div>
+                    {googleSheetTestStatus.message && (
+                      <p className="text-gray-300 text-[11px]">{googleSheetTestStatus.message}</p>
+                    )}
+                    {googleSheetTestStatus.sheetUrl && (
+                      <a
+                        href={googleSheetTestStatus.sheetUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-emerald-400 underline font-semibold text-[11px] block mt-1"
+                      >
+                        לחץ כאן לצפייה בגיליון הפעיל ↗
+                      </a>
+                    )}
+                    {googleSheetTestStatus.error && (
+                      <p className="text-red-400 text-[11px]">{googleSheetTestStatus.error}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <form onSubmit={handleSaveSettings} className="bg-navy-900 border border-navy-800 rounded-2xl p-6 space-y-4 text-right">
                 <div className="flex items-center gap-2 pb-3 border-b border-navy-800 justify-end">
                   <div className="text-right">
-                    <h3 className="font-bold text-white text-sm">הגדרות אינטגרציה חיצוניות (Make.com)</h3>
+                    <h3 className="font-bold text-white text-sm">הגדרות אינטגרציה חיצוניות (Make.com & WhatsApp)</h3>
                     <p className="text-xs text-gray-400">הגדרת כתובת Webhook לניהול הודעות WhatsApp ותפוצת נהגים</p>
                   </div>
                   <Globe className="w-5 h-5 text-orange-electric" />
@@ -1260,12 +1464,23 @@ export default function AdminDashboard() {
                 <div className="border-b border-navy-800 pb-4">
                   <div className="flex justify-between items-center mb-1">
                     <span className="text-xs font-bold text-orange-electric font-mono">#{selectedMove.id}</span>
-                    <button 
-                      onClick={() => setSelectedMove(null)} 
-                      className="text-gray-500 hover:text-white text-xs"
-                    >
-                      סגור [x]
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        type="button"
+                        onClick={() => handleDeleteMove(selectedMove.id)} 
+                        title="מחק הובלה לצמיתות"
+                        className="text-red-400 hover:text-red-300 hover:bg-red-500/10 px-2 py-0.5 rounded-lg text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>מחק הובלה</span>
+                      </button>
+                      <button 
+                        onClick={() => setSelectedMove(null)} 
+                        className="text-gray-500 hover:text-white text-xs cursor-pointer"
+                      >
+                        סגור [x]
+                      </button>
+                    </div>
                   </div>
                   <h3 className="font-bold text-white text-lg">{selectedMove.clientName}</h3>
                   <p className="text-xs text-gray-400">{selectedMove.clientPhone} | {selectedMove.clientEmail}</p>

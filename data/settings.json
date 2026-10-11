@@ -1,3 +1,5 @@
 {
-  "makeWebhookUrl": "https://hook.eu1.make.com/your-custom-webhook-endpoint-truk-dealil"
+  "makeWebhookUrl": "https://hook.eu1.make.com/your-custom-webhook-endpoint-truk-dealil",
+  "googleScriptUrl": "https://script.google.com/macros/s/AKfycbyDiRrXdNdcYaa9VY29x6qVsumayrOBD0yHzEHosbuncvsRd-mNSaM_xEenhThsANN-/exec",
+  "googleSheetId": "1Hch4csBenIwr9vt6XlyzTQ0z88LIo1917w0NPYKXqTc"
 }

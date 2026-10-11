@@ -2,9 +2,27 @@
  * Google Apps Script for Truk Dealil IL (טראק דיל il)
  * Copy this code and deploy it as a Web App in Google Apps Script.
  * 
- * Target Spreadsheet: The spreadsheet where you want to log data.
+ * Target Spreadsheet ID: 1Hch4csBenIwr9vt6XlyzTQ0z88LIo1917w0NPYKXqTc
  * Target Google Drive Folder: 1_9vxDiPP51-GtUEeqsojmp5d1z7D8UoG
  */
+
+var TARGET_SPREADSHEET_ID = "1Hch4csBenIwr9vt6XlyzTQ0z88LIo1917w0NPYKXqTc";
+
+function getTargetSpreadsheet(data) {
+  var id = (data && data.sheetId) || TARGET_SPREADSHEET_ID;
+  try {
+    if (id) {
+      return SpreadsheetApp.openById(id);
+    }
+  } catch (err) {
+    Logger.log("Error opening by ID: " + err.toString());
+  }
+  try {
+    var active = SpreadsheetApp.getActiveSpreadsheet();
+    if (active) return active;
+  } catch (err) {}
+  return SpreadsheetApp.create("טראק דיל il - ניהול הובלות");
+}
 
 // Handle POST request from the web application or backend proxy
 function doPost(e) {
@@ -25,6 +43,8 @@ function doPost(e) {
       return handleApproveBid(data);
     } else if (action === "update_payment") {
       return handleUpdatePayment(data);
+    } else if (action === "test_connection") {
+      return handleTestConnection(data);
     } else {
       return ContentService.createTextOutput(JSON.stringify({
         status: "error",
@@ -41,9 +61,20 @@ function doPost(e) {
   }
 }
 
+// Handle test connection
+function handleTestConnection(data) {
+  var spreadsheet = getTargetSpreadsheet(data);
+  return ContentService.createTextOutput(JSON.stringify({
+    status: "success",
+    message: "חיבור תקין מול Google Sheets",
+    spreadsheetName: spreadsheet ? spreadsheet.getName() : "Unknown",
+    spreadsheetId: spreadsheet ? spreadsheet.getId() : TARGET_SPREADSHEET_ID
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
 // Handle new move request
 function handleCreateMove(data) {
-  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.create("טראק דיל il - ניהול הובלות");
+  var spreadsheet = getTargetSpreadsheet(data);
   var sheet = spreadsheet.getSheetByName("משלוחים");
   if (!sheet) {
     sheet = spreadsheet.insertSheet("משלוחים");
@@ -63,7 +94,7 @@ function handleCreateMove(data) {
   try {
     var parentFolder = DriveApp.getFolderById(folderId);
     // Create a sub-folder for this specific move
-    var moveFolder = parentFolder.createFolder("Move_" + data.moveId + "_" + data.clientName);
+    var moveFolder = parentFolder.createFolder("Move_" + data.moveId + "_" + (data.clientName || "Unknown"));
     folderUrl = moveFolder.getUrl();
     
     // Upload files
@@ -126,7 +157,7 @@ function handleCreateMove(data) {
 
 // Handle CRM landing leads registration
 function handleCreateLead(data) {
-  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.create("טראק דיל il - ניהול הובלות");
+  var spreadsheet = getTargetSpreadsheet(data);
   var sheet = spreadsheet.getSheetByName("לידים");
   if (!sheet) {
     sheet = spreadsheet.insertSheet("לידים");
@@ -151,7 +182,7 @@ function handleCreateLead(data) {
 
 // Handle adding a driver bid
 function handleAddBid(data) {
-  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var spreadsheet = getTargetSpreadsheet(data);
   var sheet = spreadsheet ? spreadsheet.getSheetByName("הצעות נהגים") : null;
   if (spreadsheet && !sheet) {
     sheet = spreadsheet.insertSheet("הצעות נהגים");
@@ -178,7 +209,7 @@ function handleAddBid(data) {
 
 // Handle bid approval
 function handleApproveBid(data) {
-  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var spreadsheet = getTargetSpreadsheet(data);
   var sheet = spreadsheet ? spreadsheet.getSheetByName("אישורי הצעות") : null;
   if (spreadsheet && !sheet) {
     sheet = spreadsheet.insertSheet("אישורי הצעות");
@@ -204,8 +235,22 @@ function handleApproveBid(data) {
 
 // Handle payment status changes
 function handleUpdatePayment(data) {
-  // Logs update to Google Logger or Sheets for synchronization
-  Logger.log("Payment update: Move ID " + data.moveId + ", Payment Status: " + data.paymentStatus + ", Approved for Billing: " + data.clientApprovedForBilling);
+  var spreadsheet = getTargetSpreadsheet(data);
+  var sheet = spreadsheet ? spreadsheet.getSheetByName("תשלומים") : null;
+  if (spreadsheet && !sheet) {
+    sheet = spreadsheet.insertSheet("תשלומים");
+    sheet.appendRow(["מזהה הובלה", "סטטוס תשלום", "אושר לחיוב", "סכום", "תאריך"]);
+  }
+  if (sheet) {
+    sheet.appendRow([
+      data.moveId,
+      data.paymentStatus,
+      data.clientApprovedForBilling ? "כן" : "לא",
+      data.amount || "",
+      new Date()
+    ]);
+  }
+  Logger.log("Payment update: Move ID " + data.moveId + ", Payment Status: " + data.paymentStatus);
   
   return ContentService.createTextOutput(JSON.stringify({
     status: "success",
@@ -215,5 +260,5 @@ function handleUpdatePayment(data) {
 
 // Enable simple GET request check for web testing
 function doGet(e) {
-  return ContentService.createTextOutput("Truk Dealil IL Webhook service is active. Ready to receive POST hooks.").setMimeType(ContentService.MimeType.TEXT);
+  return ContentService.createTextOutput("טראק דיל il - שירות ה-Webhook של Google Apps Script פעיל ותקין.").setMimeType(ContentService.MimeType.TEXT);
 }
