@@ -21,13 +21,35 @@ app.use((req, res, next) => {
   next();
 });
 
-// Normalize incoming path so both /api/moves and /moves route properly in serverless environments
-app.use((req, res, next) => {
-  if (req.url && !req.url.startsWith('/api') && req.url !== '/' && !req.url.startsWith('/index.html') && !req.url.startsWith('/assets/')) {
-    req.url = '/api' + req.url;
+// Explicit route for Service Worker to ensure exact javascript mime type
+app.get('/sw.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=UTF-8');
+  res.setHeader('Service-Worker-Allowed', '/');
+  const pubSw = path.join(process.cwd(), 'public', 'sw.js');
+  const distSw = path.join(process.cwd(), 'dist', 'sw.js');
+  if (fs.existsSync(pubSw)) {
+    return res.sendFile(pubSw);
+  } else if (fs.existsSync(distSw)) {
+    return res.sendFile(distSw);
   }
-  next();
+  return res.status(404).send('// Service worker not found');
 });
+
+// Explicit route for Web App Manifest
+app.get('/manifest.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/manifest+json; charset=UTF-8');
+  const pubManifest = path.join(process.cwd(), 'public', 'manifest.json');
+  const distManifest = path.join(process.cwd(), 'dist', 'manifest.json');
+  if (fs.existsSync(pubManifest)) {
+    return res.sendFile(pubManifest);
+  } else if (fs.existsSync(distManifest)) {
+    return res.sendFile(distManifest);
+  }
+  return res.status(404).json({ error: 'Manifest not found' });
+});
+
+// Serve public directory
+app.use(express.static(path.join(process.cwd(), 'public')));
 
 // Increase payload limits for Base64 image transfers
 app.use(express.json({ limit: '50mb' }));
