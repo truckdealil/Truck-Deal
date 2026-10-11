@@ -43,6 +43,14 @@ function doPost(e) {
       return handleApproveBid(data);
     } else if (action === "update_payment") {
       return handleUpdatePayment(data);
+    } else if (action === "driver_login") {
+      return handleDriverLogin(data);
+    } else if (action === "driver_register") {
+      return handleDriverRegister(data);
+    } else if (action === "admin_approve_driver") {
+      return handleAdminApproveDriver(data);
+    } else if (action === "feedback_submitted") {
+      return handleFeedbackSubmitted(data);
     } else if (action === "test_connection") {
       return handleTestConnection(data);
     } else {
@@ -255,6 +263,148 @@ function handleUpdatePayment(data) {
   return ContentService.createTextOutput(JSON.stringify({
     status: "success",
     message: "Payment status logged"
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+// Handle driver login
+function handleDriverLogin(data) {
+  var spreadsheet = getTargetSpreadsheet(data);
+  var sheet = spreadsheet ? (spreadsheet.getSheetByName("צי רכב") || spreadsheet.getSheetByName("נהגים")) : null;
+  
+  if (!sheet && spreadsheet) {
+    sheet = spreadsheet.insertSheet("צי רכב");
+    sheet.appendRow(["מזהה", "שם מלא", "טלפון", "דגם משאית", "מספר רישוי", "סטטוס", "דירוג", "תאריך הצטרפות"]);
+    sheet.appendRow(["driver_1", "יוסי לוי", "'0528765432", "משאית 7.5 טון + רמפה הידראולית", "88-442-19", "active", "4.9", new Date()]);
+    sheet.appendRow(["driver_2", "אבי כהן", "'0541234567", "משאית 12 טון + מנוף", "12-345-67", "active", "4.8", new Date()]);
+    sheet.appendRow(["driver_3", "אמיר מסארווה", "'0509988776", "מסחרית 3.5 טון", "33-445-56", "active", "4.95", new Date()]);
+  }
+  
+  var cleanInputPhone = String(data.phone || "").replace(/\D/g, "");
+  
+  if (sheet) {
+    var values = sheet.getDataRange().getValues();
+    for (var i = 1; i < values.length; i++) {
+      var row = values[i];
+      var rowPhone = String(row[2] || "").replace(/\D/g, "");
+      if (rowPhone && (rowPhone === cleanInputPhone || rowPhone.indexOf(cleanInputPhone) !== -1 || cleanInputPhone.indexOf(rowPhone) !== -1)) {
+        var status = String(row[5] || "active").toLowerCase();
+        if (status === "inactive" || status === "pending") {
+          return ContentService.createTextOutput(JSON.stringify({
+            status: "pending_approval",
+            message: "חשבון הנהג שלך קיים בגיליון אך ממתין לאישור מנהל."
+          })).setMimeType(ContentService.MimeType.JSON);
+        }
+        return ContentService.createTextOutput(JSON.stringify({
+          status: "success",
+          driver: {
+            id: row[0],
+            name: row[1],
+            phone: row[2],
+            truckModel: row[3] || "משאית הובלות",
+            truckPlate: row[4] || "88-442-19"
+          }
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+  }
+  
+  // Default fallback check for known demo drivers
+  var defaultDrivers = [
+    { name: "יוסי לוי", phone: "0528765432", truckModel: "משאית 7.5 טון + רמפה הידראולית", truckPlate: "88-442-19" },
+    { name: "אבי כהן", phone: "0541234567", truckModel: "משאית 12 טון + מנוף", truckPlate: "12-345-67" },
+    { name: "אמיר מסארווה", phone: "0509988776", truckModel: "מסחרית 3.5 טון", truckPlate: "33-445-56" },
+    { name: "שמעון אבוטבול", phone: "0534455667", truckModel: "משאית 15 טון + מנוף", truckPlate: "77-889-90" }
+  ];
+  for (var j = 0; j < defaultDrivers.length; j++) {
+    var d = defaultDrivers[j];
+    if (d.phone === cleanInputPhone || cleanInputPhone.indexOf(d.phone) !== -1 || d.phone.indexOf(cleanInputPhone) !== -1) {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        driver: {
+          name: d.name,
+          phone: d.phone,
+          truckModel: d.truckModel,
+          truckPlate: d.truckPlate
+        }
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({
+    status: "error",
+    message: "מספר הטלפון לא נמצא במאגר הנהגים המורשים."
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+// Handle driver registration
+function handleDriverRegister(data) {
+  var spreadsheet = getTargetSpreadsheet(data);
+  var sheet = spreadsheet ? (spreadsheet.getSheetByName("צי רכב") || spreadsheet.getSheetByName("נהגים")) : null;
+  if (!sheet && spreadsheet) {
+    sheet = spreadsheet.insertSheet("צי רכב");
+    sheet.appendRow(["מזהה", "שם מלא", "טלפון", "דגם משאית", "מספר רישוי", "סטטוס", "דירוג", "תאריך הצטרפות"]);
+  }
+  if (sheet) {
+    var newId = "drv_" + new Date().getTime().toString().substr(-6);
+    sheet.appendRow([
+      newId,
+      data.name || "",
+      "'" + (data.phone || ""),
+      data.truckModel || "משאית הובלות",
+      "טרם הוגדר",
+      "active",
+      "5.0",
+      new Date()
+    ]);
+  }
+  return ContentService.createTextOutput(JSON.stringify({
+    status: "success",
+    message: "הפרטים נרשמו בהצלחה בלשונית צי רכב בגיליון!"
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+// Handle admin approving or disabling a driver
+function handleAdminApproveDriver(data) {
+  var spreadsheet = getTargetSpreadsheet(data);
+  var sheet = spreadsheet ? (spreadsheet.getSheetByName("צי רכב") || spreadsheet.getSheetByName("נהגים")) : null;
+  if (sheet) {
+    var cleanPhone = String(data.phone || "").replace(/\D/g, "");
+    var values = sheet.getDataRange().getValues();
+    for (var i = 1; i < values.length; i++) {
+      var rowPhone = String(values[i][2] || "").replace(/\D/g, "");
+      if (rowPhone && (rowPhone === cleanPhone || rowPhone.indexOf(cleanPhone) !== -1 || cleanPhone.indexOf(rowPhone) !== -1)) {
+        sheet.getRange(i + 1, 6).setValue(data.approve ? "active" : "inactive");
+        break;
+      }
+    }
+  }
+  return ContentService.createTextOutput(JSON.stringify({
+    status: "success",
+    message: "סטטוס נהג עודכן בהצלחה"
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+// Handle customer feedback logging
+function handleFeedbackSubmitted(data) {
+  var spreadsheet = getTargetSpreadsheet(data);
+  var sheet = spreadsheet ? spreadsheet.getSheetByName("משוב לקוחות") : null;
+  if (!sheet && spreadsheet) {
+    sheet = spreadsheet.insertSheet("משוב לקוחות");
+    sheet.appendRow(["מזהה הובלה", "דירוג", "הערות לקוח", "דורש טיפול מנהל", "מזהה פנייה", "תאריך"]);
+  }
+  if (sheet) {
+    sheet.appendRow([
+      data.moveId,
+      data.rating,
+      data.feedbackText || "",
+      data.requiresAdminReview ? "כן" : "לא",
+      data.adminReviewTicketId || "",
+      new Date()
+    ]);
+  }
+  return ContentService.createTextOutput(JSON.stringify({
+    status: "success",
+    message: "משוב נרשם בהצלחה"
   })).setMimeType(ContentService.MimeType.JSON);
 }
 

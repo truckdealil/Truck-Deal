@@ -47,7 +47,7 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
             {
               id: 'init_1',
               sender: 'ai',
-              text: 'שלום! אני <b>Truk AI Dispatcher</b> — הסדרן, המתמחר ומנהל התפעול הלוגיסטי הראשי של פלטפורמת "טראק דיל il". כיצד אוכל לסייע לך באפיון לוגיסטי, התאמת צי רכב ותמחור שקוף כעת?<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק',
+              text: 'שלום! אני <b>Truk AI Dispatcher & Security Controller</b> — מנוע התפעול, התמחור ואבטחת המידע הראשי של פלטפורמת "טראק דיל il" (גרסה 3.0 Production Ready). כיצד אוכל לסייע לך באפיון לוגיסטי, התאמת צי רכב (כולל מחירון מנופי עוז משא בע"מ) ותמחור שקוף ומאובטח כעת?<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק',
               timestamp: new Date().toISOString()
             }
           ]);
@@ -113,26 +113,40 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
   const handleContinuationClick = (optionText: string) => {
     const cleanedOption = optionText.replace('🔲', '').trim();
 
-    // If client clicks "מעבר למעקב חי והסדרת מקדמה", navigate directly if moveId found
+    // 1. Direct WhatsApp link embedded in option text
+    const waUrlMatch = optionText.match(/https:\/\/api\.whatsapp\.com[^\s<"')]+/);
+    if (waUrlMatch) {
+      window.open(waUrlMatch[0], '_blank');
+      return;
+    }
+
+    // 2. Direct tracking link embedded in option text
+    const trackingMatch = optionText.match(/moveId=([^&\s)]+)/);
+    if (trackingMatch && onNavigate) {
+      onNavigate('tracking', trackingMatch[1]);
+      return;
+    }
+
+    // 3. Fallback history search for tracking
     if (cleanedOption.includes('מעקב חי') || cleanedOption.includes('מקדמה')) {
       for (let i = messages.length - 1; i >= 0; i--) {
         const match = messages[i].text.match(/TRK-\d+/);
         if (match && onNavigate) {
           onNavigate('tracking', match[0]);
-          break;
+          return;
         }
       }
-    } else if (cleanedOption.includes('WhatsApp') || cleanedOption.includes('וואטסאפ')) {
+    } else if (cleanedOption.includes('WhatsApp') || cleanedOption.includes('וואטסאפ') || cleanedOption.includes('שיגור ישיר')) {
       for (let i = messages.length - 1; i >= 0; i--) {
-        const match = messages[i].text.match(/https:\/\/api\.whatsapp\.com[^\s<"']+/);
+        const match = messages[i].text.match(/https:\/\/api\.whatsapp\.com[^\s<"')]+/);
         if (match) {
           window.open(match[0], '_blank');
-          break;
+          return;
         }
       }
     }
 
-    handleSendMessage(cleanedOption);
+    handleSendMessage(cleanedOption.replace(/\(https?:\/\/[^\)]+\)/g, '').trim());
   };
 
   // Function to extract text lines and identify 🔲 options & Magic Links
@@ -151,6 +165,10 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
           }
 
           if (trimmed.startsWith('🔲')) {
+            const displayLabel = trimmed
+              .replace('🔲', '')
+              .replace(/\(https?:\/\/[^\)]+\)/g, '')
+              .trim();
             return (
               <button
                 key={idx}
@@ -158,7 +176,7 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
                 className="w-full mt-1.5 py-2 px-3 bg-navy-950 hover:bg-orange-electric/10 hover:border-orange-electric border border-navy-800 text-gray-200 hover:text-white rounded-xl text-xs font-semibold text-right transition-all flex items-center gap-2 cursor-pointer shadow-sm select-none"
               >
                 <span className="text-orange-electric font-black text-sm">🔲</span>
-                <span dangerouslySetInnerHTML={{ __html: trimmed.replace('🔲', '').trim() }} />
+                <span dangerouslySetInnerHTML={{ __html: displayLabel }} />
               </button>
             );
           }

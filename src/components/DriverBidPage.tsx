@@ -91,6 +91,33 @@ export default function DriverBidPage({ initialMoveId, onBidSubmitted }: DriverB
     setAuthError('');
 
     try {
+      // 1. Check local backend first
+      const localRes = await fetch('/api/drivers/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: cleanPhone })
+      });
+      if (localRes.ok) {
+        const localData = await localRes.json();
+        if (localData.status === 'success' && localData.driver) {
+          const session = {
+            name: localData.driver.name,
+            phone: localData.driver.phone || authPhoneInput,
+            truckPlate: localData.driver.truckPlate || '88-442-19',
+            truckModel: localData.driver.truckModel || 'משאית הובלות'
+          };
+          localStorage.setItem('truk_active_driver_session', JSON.stringify(session));
+          setDriverName(session.name);
+          setDriverPhone(session.phone);
+          setIsAuthenticated(true);
+          return;
+        } else if (localData.status === 'pending_approval') {
+          setAuthError('חשבונך עדיין ממתין לאישור מנהל במערכת.');
+          return;
+        }
+      }
+
+      // 2. Google Apps Script fallback
       const gasUrl = import.meta.env.VITE_GAS_WEBAPP_URL || 'https://script.google.com/macros/s/AKfycbyDiRrXdNdcYaa9VY29x6qVsumayrOBD0yHzEHosbuncvsRd-mNSaM_xEenhThsANN-/exec';
       const gasRes = await fetch(gasUrl, {
         method: 'POST',
@@ -103,8 +130,8 @@ export default function DriverBidPage({ initialMoveId, onBidSubmitted }: DriverB
         const session = {
           name: result.driver.name,
           phone: result.driver.phone || authPhoneInput,
-          truckPlate: result.driver.truckPlate,
-          truckModel: result.driver.truckModel
+          truckPlate: result.driver.truckPlate || '88-442-19',
+          truckModel: result.driver.truckModel || 'משאית הובלות'
         };
         localStorage.setItem('truk_active_driver_session', JSON.stringify(session));
         setDriverName(session.name);
@@ -116,22 +143,7 @@ export default function DriverBidPage({ initialMoveId, onBidSubmitted }: DriverB
         return;
       }
 
-      // Local fallback
-      const driversRes = await fetch('/api/drivers');
-      if (driversRes.ok) {
-        const driversList = await driversRes.json();
-        const found = driversList.find((d: any) => (d.phone || '').replace(/\D/g, '') === cleanPhone);
-        if (found && found.status === 'active') {
-          const session = { name: found.fullName, phone: found.phone };
-          localStorage.setItem('truk_active_driver_session', JSON.stringify(session));
-          setDriverName(session.name);
-          setDriverPhone(session.phone);
-          setIsAuthenticated(true);
-          return;
-        }
-      }
-
-      setAuthError(result.message || 'מספר הטלפון אינו קיים ברשימת הנהגים המורשים.');
+      setAuthError(result.message && !result.message.includes('Unknown action') ? result.message : 'מספר הטלפון אינו קיים ברשימת הנהגים המורשים.');
     } catch (err: any) {
       setAuthError('שגיאת תקשורת באימות מול השרת.');
     } finally {

@@ -85,6 +85,31 @@ export default function DriverFieldApp({ initialMoveId, onBackToBidding }: Drive
     setLoginError('');
 
     try {
+      // 1. Direct local authentication against server database first (Fast & Resilient)
+      const localRes = await fetch('/api/drivers/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: cleanPhone })
+      });
+      if (localRes.ok) {
+        const localData = await localRes.json();
+        if (localData.status === 'success' && localData.driver) {
+          const session = {
+            name: localData.driver.name,
+            phone: localData.driver.phone || loginPhoneInput,
+            truckPlate: localData.driver.truckPlate || '88-442-19',
+            truckModel: localData.driver.truckModel || 'משאית הובלות'
+          };
+          localStorage.setItem('truk_active_driver_session', JSON.stringify(session));
+          setLoggedDriver(session);
+          return;
+        } else if (localData.status === 'pending_approval') {
+          setLoginError('חשבון הנהג שלך קיים במערכת אך ממתין לאישור מנהל.');
+          return;
+        }
+      }
+
+      // 2. Fallback to Google Apps Script Webhook
       const gasUrl = import.meta.env.VITE_GAS_WEBAPP_URL || 'https://script.google.com/macros/s/AKfycbyDiRrXdNdcYaa9VY29x6qVsumayrOBD0yHzEHosbuncvsRd-mNSaM_xEenhThsANN-/exec';
       const gasRes = await fetch(gasUrl, {
         method: 'POST',
@@ -97,8 +122,8 @@ export default function DriverFieldApp({ initialMoveId, onBackToBidding }: Drive
         const session = {
           name: result.driver.name,
           phone: result.driver.phone || loginPhoneInput,
-          truckPlate: result.driver.truckPlate,
-          truckModel: result.driver.truckModel
+          truckPlate: result.driver.truckPlate || '88-442-19',
+          truckModel: result.driver.truckModel || 'משאית הובלות'
         };
         localStorage.setItem('truk_active_driver_session', JSON.stringify(session));
         setLoggedDriver(session);
@@ -108,7 +133,7 @@ export default function DriverFieldApp({ initialMoveId, onBackToBidding }: Drive
         return;
       }
 
-      setLoginError(result.message || 'מספר הטלפון לא נמצא במאגר הנהגים המורשים.');
+      setLoginError(result.message && !result.message.includes('Unknown action') ? result.message : 'מספר הטלפון לא נמצא במאגר הנהגים המורשים.');
     } catch (err: any) {
       setLoginError('שגיאת תקשורת באימות מול השרת.');
     } finally {
@@ -128,6 +153,27 @@ export default function DriverFieldApp({ initialMoveId, onBackToBidding }: Drive
     setLoginError('');
 
     try {
+      // 1. Direct local registration in system
+      const localRes = await fetch('/api/drivers/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: loginPhoneInput,
+          name: registerName,
+          truckModel: registerTruckModel || 'משאית הובלות'
+        })
+      });
+
+      if (localRes.ok) {
+        const localResult = await localRes.json();
+        if (localResult.status === 'success') {
+          alert('הפרטים נרשמו בהצלחה במאגר הנהגים! ניתן להתחבר כעת.');
+          setIsRegisterMode(false);
+          return;
+        }
+      }
+
+      // 2. Google Apps Script fallback
       const gasUrl = import.meta.env.VITE_GAS_WEBAPP_URL || 'https://script.google.com/macros/s/AKfycbyDiRrXdNdcYaa9VY29x6qVsumayrOBD0yHzEHosbuncvsRd-mNSaM_xEenhThsANN-/exec';
       const gasRes = await fetch(gasUrl, {
         method: 'POST',

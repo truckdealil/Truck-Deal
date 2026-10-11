@@ -86,6 +86,7 @@ export default function AdminDashboard() {
     if (adminPasswordInput.trim() === validPassword) {
       setIsAdminAuthenticated(true);
       localStorage.setItem('truckdeal_admin_auth', 'true');
+      localStorage.setItem('truckdeal_admin_token', adminPasswordInput.trim());
       setAuthError('');
     } else {
       setAuthError('סיסמת מנהל שגויה!');
@@ -95,6 +96,7 @@ export default function AdminDashboard() {
   const handleAdminLogout = () => {
     setIsAdminAuthenticated(false);
     localStorage.removeItem('truckdeal_admin_auth');
+    localStorage.removeItem('truckdeal_admin_token');
     setAdminPasswordInput('');
   };
 
@@ -102,12 +104,15 @@ export default function AdminDashboard() {
     setLoading(true);
     setError(null);
     try {
+      const adminToken = localStorage.getItem('truckdeal_admin_token') || 'Rami1125';
+      const authHeader = { 'x-admin-token': adminToken };
+
       const [movesRes, leadsRes, driversRes, settingsRes, chatsRes] = await Promise.all([
-        fetch('/api/moves'),
-        fetch('/api/leads'),
-        fetch('/api/drivers'),
-        fetch('/api/settings'),
-        fetch('/api/chats')
+        fetch('/api/moves', { headers: authHeader }),
+        fetch('/api/leads', { headers: authHeader }),
+        fetch('/api/drivers', { headers: authHeader }),
+        fetch('/api/settings', { headers: authHeader }),
+        fetch('/api/chats', { headers: authHeader })
       ]);
 
       if (!movesRes.ok || !leadsRes.ok) {
@@ -211,9 +216,13 @@ export default function AdminDashboard() {
     if (e) e.preventDefault();
     setActionLoading(true);
     try {
+      const adminToken = localStorage.getItem('truckdeal_admin_token') || 'Rami1125';
       const response = await fetch('/api/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-admin-token': adminToken
+        },
         body: JSON.stringify(settings)
       });
       if (!response.ok) throw new Error('עדכון הגדרות נכשל');
@@ -416,9 +425,13 @@ export default function AdminDashboard() {
     setActionSuccess(null);
 
     try {
+      const adminToken = localStorage.getItem('truckdeal_admin_token') || 'Rami1125';
       const response = await fetch(`/api/moves/${moveId}/payment`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-admin-token': adminToken
+        },
         body: JSON.stringify(fields)
       });
 

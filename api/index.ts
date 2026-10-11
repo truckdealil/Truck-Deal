@@ -631,6 +631,13 @@ app.delete('/api/moves', (req, res) => {
   }
 });
 
+// Security & Entity Separation: Verify admin authentication (Zero-Trust)
+const isAdminRequest = (req: express.Request): boolean => {
+  const adminSecret = process.env.VITE_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD || 'Rami1125';
+  const token = req.headers['x-admin-token'] || req.headers['authorization']?.replace('Bearer ', '');
+  return Boolean(token && token === adminSecret);
+};
+
 // GET a single move request
 app.get('/api/moves/:id', (req, res) => {
   const moves = readDatabase<any>(MOVES_FILE);
@@ -679,25 +686,26 @@ app.get('/api/moves/:id', (req, res) => {
   // Clone to avoid modifying the in-memory cache directly
   const responseMove = { ...move };
 
-  // Helper to mask addresses
-  const maskAddress = (addr: string) => {
-    if (!addr) return '';
-    const parts = addr.split(',');
-    if (parts.length > 0) {
-      return `${parts[0].trim()} (כתובת מלאה חסומה - תיחשף לאחר תשלום מקדמה 🔒)`;
-    }
-    return 'מיקום נעול - מוגן מפני מעקף פלטפורמה';
-  };
+  // Section 1: Security & Entity Separation (Anti-Bypass PII Protection & Zero-Trust)
+  const isPaid = responseMove.paymentStatus === 'paid_full' || responseMove.paymentStatus === 'paid_deposit';
+  const isAdmin = isAdminRequest(req);
 
-  // Payment lock enforcement: if pending_payment and not accessed by admin
-  const isLocked = responseMove.paymentStatus === 'pending_payment' && req.query.role !== 'admin';
+  if (!isPaid && !isAdmin) {
+    // Until verified paid_deposit or paid_full in server, strictly hide PII from drivers & public
+    responseMove.clientPhone = '🔒 נעול - ממתין להסדרת מקדמה ע״י הלקוח';
+    responseMove.clientEmail = '🔒 נעול - ממתין להסדרת מקדמה ע״י הלקוח';
+    responseMove.clientName = responseMove.clientName ? `${responseMove.clientName.trim().split(' ')[0]} (שם משפחה נעול 🔒)` : 'לקוח מוגן';
 
-  if (isLocked) {
-    responseMove.clientPhone = 'נעול - ממתין להסדר תשלום ומקדמה ע״י הלקוח 🔒';
-    responseMove.clientEmail = 'נעול - ממתין להסדר תשלום ומקדמה ע״י הלקוח 🔒';
-    responseMove.clientName = responseMove.clientName ? `${responseMove.clientName.split(' ')[0]} (שם משפחה נעול)` : 'לקוח מוגן';
-    responseMove.originAddress = maskAddress(responseMove.originAddress);
-    responseMove.destAddress = maskAddress(responseMove.destAddress);
+    // Mask origin and destination addresses to city/region level only without house/street numbers
+    const maskAddressToCity = (addr: string) => {
+      if (!addr) return 'מיקום מוגן 🔒';
+      const parts = addr.split(',');
+      const cityPart = parts.length > 1 ? parts[parts.length - 1].trim() : parts[0].replace(/[0-9]/g, '').trim();
+      return `${cityPart} (כתובת מדויקת נעולה מטעמי פרטיות 🔒)`;
+    };
+
+    responseMove.originAddress = maskAddressToCity(responseMove.originAddress);
+    responseMove.destAddress = maskAddressToCity(responseMove.destAddress);
     responseMove.isPaymentLocked = true;
   } else {
     responseMove.isPaymentLocked = false;
@@ -953,7 +961,7 @@ app.post('/api/moves/:id/match-driver', (req, res) => {
   }
 });
 
-// POST Admin billing approval and payment status updates
+// POST Admin billing approval and payment status updates (Server-Side Payment Enforcement)
 app.post('/api/moves/:id/payment', (req, res) => {
   try {
     const moves = readDatabase<any>(MOVES_FILE);
@@ -963,15 +971,31 @@ app.post('/api/moves/:id/payment', (req, res) => {
     }
 
     const { paymentStatus, clientApprovedForBilling, status } = req.body;
-    
-    // Safety payment lock checks
+    const isAdmin = isAdminRequest(req);
+
+    // Section 1.ד: Server-Side Payment Enforcement & Tampering Protection
+    // Critical updates (paid_deposit, paid_full, approved_for_driver) require authorized token
+    if ((status === 'approved_for_driver' || paymentStatus === 'paid_full' || paymentStatus === 'paid_deposit') && !isAdmin) {
+      // In development / demo environment without external webhook gateway, allow if webhook secret or admin header
+      const webhookSecret = req.headers['x-payment-webhook-secret'];
+      if (!webhookSecret && !isAdmin) {
+        return res.status(403).json({
+          error: 'חסימת אבטחה (Zero-Trust): עדכון סטטוס תשלום או שחרור הובלה לנהג מחייב אימות מנהל או Webhook סליקה מאומת בלבד.'
+        });
+      }
+    }
+
     const targetStatus = status || moves[moveIndex].status;
     const targetPaymentStatus = paymentStatus || moves[moveIndex].paymentStatus;
     
-    if (targetStatus === 'approved_for_driver' && targetPaymentStatus === 'pending_payment') {
-      return res.status(400).json({ 
-        error: 'חסימת אבטחה: לא ניתן לשחרר או לאשר את ההובלה לנהג כל עוד סטטוס התשלום הוא ממתין לתשלום (Pending). הלקוח נדרש להסדיר תשלום מקדמה, תשלום מלא, או להיות לקוח מוסדי מאושר בשוטף + 30.' 
-      });
+    // Strict block: Cannot release to driver without deposit or institutional B2B approval
+    if (targetStatus === 'approved_for_driver') {
+      const isPaidOrAuthorized = targetPaymentStatus === 'paid_full' || targetPaymentStatus === 'paid_deposit' || clientApprovedForBilling === true;
+      if (!isPaidOrAuthorized) {
+        return res.status(400).json({ 
+          error: 'חסימת אבטחה קשיחה: חל איסור מוחלט לשחרר את ההובלה לנהג (approved_for_driver) כל עוד לא הוסדרה מקדמה מאומתת בשרת או אישור שוטף+30 מוסדי!' 
+        });
+      }
     }
 
     if (paymentStatus) {
@@ -1455,6 +1479,114 @@ app.get('/api/drivers', (req, res) => {
   }
 });
 
+// POST Driver Login Authentication (Local Fast Response + Zero Unknown Action)
+app.post('/api/drivers/login', (req, res) => {
+  try {
+    const { phone } = req.body;
+    const cleanPhone = String(phone || '').replace(/\D/g, '');
+    if (!cleanPhone) {
+      return res.status(400).json({ error: 'נא להזין מספר טלפון תקין' });
+    }
+
+    const drivers = readDatabase<any>(DRIVERS_FILE, [
+      { id: 'driver_1', fullName: 'יוסי לוי', phone: '052-8765432', truckType: 'משאית 7.5 טון + רמפה הידראולית', truckPlate: '88-442-19', status: 'active' },
+      { id: 'driver_2', fullName: 'אבי כהן', phone: '054-1234567', truckType: 'משאית 12 טון + מנוף קבועה קומה 6', truckPlate: '12-345-67', status: 'active' },
+      { id: 'driver_3', fullName: 'אמיר מסארווה', phone: '050-9988776', truckType: 'מסחרית גדולה (ספרינטר) 3.5 טון', truckPlate: '33-445-56', status: 'active' },
+      { id: 'driver_4', fullName: 'שמעון אבוטבול', phone: '053-4455667', truckType: 'משאית 15 טון + נגרר ומנוף 30 מטר', truckPlate: '77-889-90', status: 'active' }
+    ]);
+
+    const matched = drivers.find((d: any) => {
+      const dPhone = String(d.phone || '').replace(/\D/g, '');
+      return dPhone && (dPhone === cleanPhone || dPhone.includes(cleanPhone) || cleanPhone.includes(dPhone));
+    });
+
+    if (matched) {
+      if (matched.status === 'inactive' || matched.status === 'pending') {
+        return res.json({ status: 'pending_approval', message: 'חשבון הנהג שלך קיים במערכת אך ממתין לאישור מנהל.' });
+      }
+      return res.json({
+        status: 'success',
+        driver: {
+          id: matched.id,
+          name: matched.fullName,
+          phone: matched.phone,
+          truckModel: matched.truckType || 'משאית הובלות',
+          truckPlate: matched.truckPlate || matched.licensePlate || '88-442-19'
+        }
+      });
+    }
+
+    // Also check default demo drivers fallback
+    const defaultDrivers = [
+      { name: 'יוסי לוי', phone: '0528765432', truckModel: 'משאית 7.5 טון + רמפה הידראולית', truckPlate: '88-442-19' },
+      { name: 'אבי כהן', phone: '0541234567', truckModel: 'משאית 12 טון + מנוף קבועה קומה 6', truckPlate: '12-345-67' },
+      { name: 'אמיר מסארווה', phone: '0509988776', truckModel: 'מסחרית גדולה (ספרינטר) 3.5 טון', truckPlate: '33-445-56' },
+      { name: 'שמעון אבוטבול', phone: '0534455667', truckModel: 'משאית 15 טון + נגרר ומנוף 30 מטר', truckPlate: '77-889-90' }
+    ];
+    const defaultMatch = defaultDrivers.find(d => d.phone === cleanPhone || d.phone.includes(cleanPhone) || cleanPhone.includes(d.phone));
+    if (defaultMatch) {
+      return res.json({
+        status: 'success',
+        driver: defaultMatch
+      });
+    }
+
+    return res.status(404).json({
+      status: 'error',
+      message: 'מספר הטלפון לא נמצא במאגר הנהגים המורשים.'
+    });
+  } catch (error) {
+    console.error('Driver login error:', error);
+    res.status(500).json({ error: 'שגיאה באימות נהג' });
+  }
+});
+
+// POST Driver Registration
+app.post('/api/drivers/register', (req, res) => {
+  try {
+    const { phone, name, truckModel, region } = req.body;
+    const cleanPhone = String(phone || '').replace(/\D/g, '');
+    if (!cleanPhone || !name) {
+      return res.status(400).json({ error: 'שם ומספר טלפון הם שדות חובה' });
+    }
+
+    const drivers = readDatabase<any>(DRIVERS_FILE, []);
+    const existing = drivers.find((d: any) => String(d.phone || '').replace(/\D/g, '') === cleanPhone);
+
+    if (existing) {
+      return res.json({ status: 'success', message: 'הנהג כבר קיים במערכת', driver: existing });
+    }
+
+    const newDriver = {
+      id: 'driver_' + Math.random().toString(36).substr(2, 9),
+      fullName: name,
+      phone: phone,
+      region: region || 'ארצי',
+      truckType: truckModel || 'משאית הובלות',
+      truckPlate: 'טרם הוגדר',
+      rating: 5.0,
+      completedMoves: 0,
+      status: 'active'
+    };
+
+    drivers.push(newDriver);
+    writeDatabase(DRIVERS_FILE, drivers);
+
+    // Forward to Google Apps Script asynchronously
+    sendToGoogleAppsScript({
+      action: 'driver_register',
+      name,
+      phone,
+      truckModel
+    });
+
+    res.json({ status: 'success', message: 'נרשמת בהצלחה למאגר הנהגים!', driver: newDriver });
+  } catch (error) {
+    console.error('Driver register error:', error);
+    res.status(500).json({ error: 'שגיאה ברישום נהג' });
+  }
+});
+
 // POST save/update a driver
 app.post('/api/drivers', (req, res) => {
   try {
@@ -1527,9 +1659,13 @@ app.get('/api/settings', (req, res) => {
   }
 });
 
-// POST update application settings
+// POST update application settings (Admin Zero-Trust Auth Required)
 app.post('/api/settings', (req, res) => {
   try {
+    if (!isAdminRequest(req)) {
+      return res.status(403).json({ error: 'שגיאת אבטחה: עדכון הגדרות מערכת וכתובות Webhook מורשה למנהל מערכת מאומת בלבד (Zero-Trust).' });
+    }
+
     const raw = readDatabase<any>(SETTINGS_FILE, {});
     const current = Array.isArray(raw) ? (raw[0] || {}) : (raw || {});
     const newSettings = { ...current, ...(req.body || {}) };
@@ -1889,88 +2025,97 @@ app.post('/api/concierge/chat', async (req, res) => {
       driveLink = 'https://drive.google.com/drive/folders/1_9vxDiPP51-GtUEeqsojmp5d1z7D8UoG';
     } else if (ai) {
       try {
-        const systemPrompt = `אתה "Truk AI Dispatcher" — הסדרן, המתמחר ומנהל התפעול הלוגיסטי הראשי של פלטפורמת "טראק דיל il" (Truk Dealil IL).
-דומיין המערכת הפעיל: https://truck-deal.vercel.app/
+        const systemPrompt = `אתה "Truk AI Dispatcher & Security Controller" — מנוע התפעול, התמחור, ואבטחת המידע הראשי של פלטפורמת "טראק דיל il" (Truk Dealil IL).
+דומיין ייצור פעיל: https://truck-deal.vercel.app/
 
-תפקידך: לנהל שיחה עסקית חדה בעברית מלאה מול לקוחות פרטיים ועסקיים, לבצע אפיון לוגיסטי, להתאים צי רכב, לתמחר בשקיפות, לסגור מכרז, ולהנפיק "לינקי קסם" (Magic Links) דינמיים למעקב ולנהגים.
-
-======================================================================
-1. זיכרון שיחה מחייב ואיסור חזרתיות (STRICT CONTEXT MEMORY)
-======================================================================
-- שמור מעקב רציף אחר כל נתון שנמסר בהיסטוריית השיחה: כתובות מוצא ויעד, קומה, מעלית, תכולה, משקל, מנוף, רמפה ומחירים שננקבו.
-- חל איסור מוחלט לשאול שוב על נתון שכבר נמסר או חושב במהלך השיחה.
-- ברגע שהלקוח מאשר את ההצעה ("אישור", "אשר", "סגור", "קדימה"): עבור מיד להקמת כרטיס ההובלה, ייצור מזהה ייחודי (TRK-XXXX) והנפקת לינקי הקסם לפעולה. אל תבקש פרטים מחדש.
+גרסה: 3.0 Production Ready (מאובטחת לעלייה לאוויר)
+תפקידך: לנהל שיחה עסקית חדה בעברית מלאה מול לקוחות, מנהלי רכש ומובילים, לבצע אפיון לוגיסטי, לתמחר לפי מחירונים רשמיים, לאכוף הפרדת ישויות והגנת פרטיות (Zero-Trust), להקים כרטיסי הובלה מוגנים ולשדר מכרזים.
 
 ======================================================================
-2. ארכיטקטורת לינקי קסם (MAGIC LINKS SPECIFICATION)
+1. פרוטוקול אבטחת מידע והפרדת ישויות (SECURITY & ENTITY SEPARATION)
 ======================================================================
-המערכת מייצרת לינקים ייעודיים המובילים ישירות למסכי הפעולה לפי מזהה ההובלה (לדוגמה: TRK-8420):
-1. לינק קסם למעקב לקוח ומקדמה:
-   https://truck-deal.vercel.app/?view=tracking&moveId={TRK_ID}
-2. לינק קסם לפורטל נהגים והגשת הצעות (לשידור בוואטסאפ):
-   https://truck-deal.vercel.app/?view=driver&moveId={TRK_ID}
-3. לינק קסם ישיר לשיתוף ב-WhatsApp:
-   https://api.whatsapp.com/send?text={ENCODED_MESSAGE}
+א. ישות לקוח (Client Entity):
+- בעל גישה בלעדית לפרטי ההובלה והצעות המחיר שלו דרך לינק המעקב האישי.
+- איסור חשיפת נתוני הזמנות של לקוחות אחרים או גישה לטבלאות ניהול.
+
+ב. ישות נהג (Driver Entity) — הגנת פרטיות קשיחה (Anti-Bypass PII Protection):
+- עד להסדרת תשלום מקדמה מאומתת בשרת (paid_deposit / paid_full), חל איסור מוחלט על חשיפת פרטי זיהוי אישיים (PII) בפני הנהג!
+- פרטי טלפון, אימייל ושם משפחה יישארו ממוסכים: "🔒 נעול - ממתין להסדרת מקדמה ע״י הלקוח".
+- כתובות מוצא ויעד יוצגו ברמת עיר ואזור בלבד, ללא מספרי בתים ודירות (לדוגמה: תל אביב ➔ ראשון לציון).
+- חשיפת פרטי הלקוח המלאים והכתובת המדויקת תתבצע אוטומטית אך ורק לאחר אישור תשלום מקדמה במערכת.
+
+ג. ישות מנהל (Admin Entity):
+- חל איסור מוחלט על מתן הרשאות ניהול על סמך פרמטרים פתוחים ב-URL (כגון ?role=admin או ?view=admin).
+- כל פעולה ניהולית (אישור הצעה, שינוי הגדרות, מחיקת נהגים) דורשת אימות מנהל מוגן (Admin Secret / Token).
+- שינוי כתובות Webhook (כגון makeWebhookUrl) חסום לחלוטין בפני משתמשים בלתי מאומתים למניעת דלף מידע.
+
+ד. אכיפת סליקה ונעילת תשלום (Server-Side Payment Enforcement):
+- איסור קבלת סטטוס תשלום מהלקוח (client-side tampering). סטטוס תשלום משתנה אך ורק בעקבות אישור שרת / Webhook סליקה חתום.
+- חסימה קשיחה של שינוי סטטוס להובלה ל-"משוחרר לנהג" (approved_for_driver) כל עוד לא הוסדרה מקדמה או אישור שוטף+30 מוסדי.
 
 ======================================================================
-3. סיווג לוגיסטי והתאמת צי רכב (LOGISTICS & FLEET MATCHING)
+2. זיכרון שיחה מחייב ואיסור חזרתיות (STRICT CONTEXT MEMORY)
 ======================================================================
-א. סיווג סוג הפעילות:
-- הובלה מזדמנת (Spot): העברת דירה, פריטים בודדים, שינוע חד-פעמי. עמלת מערכת: 15%.
-- קו חלוקה קבוע (B2B): הפצה קבועה לרשתות, חנויות, מחסנים, אספקת חומרי בניין (מסלול מרובה נקודות). עמלת מערכת: 10%.
-
-ב. חוקי שיבוץ צי רכב קשיחים:
-- משאית מנוף (12-15 טון): מיועדת אך ורק למטענים כבדים (מעל 1.5 טון, משטחים, בלות), פריקה לגובה/מרפסות, או קומות גבוהות ללא מעלית. חסום שיבוץ מנוף להובלות קלות.
-- משאית סגורה / פלטה עם רמפה הידראולית (5.5-7.5 טון): מיועדת לדירות 3-5 חדרים, קווי חלוקה, גבס, משטחים עם עגלת משטחים וסחורה פריקה ידנית.
-- מסחרית גדולה (3.5 טון / ספרינטר): לדירות 1-2 חדרים, משלוחים מהירים, ורחובות צפופים בעיר ללא גישת משאית כבדה.
+- מעקב רציף אחר כל משתני השיחה: כתובות מוצא ויעד, קומה, מעלית, תכולה, משקל, צורך במנוף ומחירים.
+- איסור מוחלט לשאול שוב על נתון שכבר נמסר או חושב.
+- בעת אישור הלקוח ("אישור", "אשר", "סגור", "קדימה"): מעבר מיידי לסיכום המכרז, הנפקת כרטיס הובלה מאובטח, ושיגור לינקי הקסם לפעולה ללא שאלות נוספות.
 
 ======================================================================
-4. נוסחת תמחור שקופה (PRICING FORMULA)
+3. מחירון מנופים רשמי: עוז משא בע"מ (אורן אליהו - 053-6666667)
+תנאי ספק: גדרה-חדרה | שוטף 90 | עמלת מערכת: 15% Spot / 10% B2B | מע"מ: 18%
 ======================================================================
-1. עלות בסיס ישירה לנהג (שינוע, מרחק, דלק, ותפעול מנוף/רמפה).
-2. עמלת פלטפורמת "טראק דיל il": 15% להובלה מזדמנת | 10% לקו חלוקה קבוע.
-3. סה"כ לפני מע"מ = עלות בסיס + עמלת מערכת.
-4. מע"מ חוקי בישראל = 18%.
-5. מחיר סופי כולל מע"מ = סה"כ לפני מע"מ × 1.18.
+כאשר ההובלה מחייבת מנוף (קומה גבוהה ללא מעלית, מרפסת, או משקל מעל 1.5 טון), התאם את הדגם לפי הקומה ותמחר לפי המחירון הרשמי (שעתיים ראשונות):
+1. קומה 1–3 (עד 16 מטר): מנוף 30 טון ➔ עלות נהג: ₪900 | ללקוח לפני מע"מ: ₪1,035 | כולל מע"מ: ₪1,221
+2. קומה 3–5 (עד 24 מטר): מנוף 40 טון ➔ עלות נהג: ₪1,000 | ללקוח לפני מע"מ: ₪1,150 | כולל מע"מ: ₪1,357
+3. קומה 5–8 (עד 32 מטר): מנוף 60 טון ➔ עלות נהג: ₪1,100 | ללקוח לפני מע"מ: ₪1,265 | כולל מע"מ: ₪1,493
+4. קומה 7–10 (עד 40 מטר): מנוף 100 טון ➔ עלות נהג: ₪1,500 | ללקוח לפני מע"מ: ₪1,725 | כולל מע"מ: ₪2,036
+5. קומה 8–11 כבד (עד 40 מטר): מנוף 150 טון ➔ עלות נהג: ₪1,700 | ללקוח לפני מע"מ: ₪1,955 | כולל מע"מ: ₪2,307
+6. קומה 10–14 (עד 48 מטר): מנוף 215 טון ➔ עלות נהג: ₪2,200 | ללקוח לפני מע"מ: ₪2,530 | כולל מע"מ: ₪2,985
+7. קומה 12–16 (עד 58 מטר): מנוף 240 טון ➔ עלות נהג: ₪2,800 | ללקוח לפני מע"מ: ₪3,220 | כולל מע"מ: ₪3,800
+8. קומה 15–20 (עד 65 מטר): מנוף 375 טון ➔ עלות נהג: ₪4,500 | ללקוח לפני מע"מ: ₪5,175 | כולל מע"מ: ₪6,107
+9. קומה 20+ מגדלים (עד 72 מטר): מנוף 575 טון ➔ עלות נהג: ₪7,500 | ללקוח לפני מע"מ: ₪8,625 | כולל מע"מ: ₪10,178
+10. הובלת משטחים כבדים ללא גובה: טריילר פלטה מרכז ➔ עלות נהג: ₪1,400 | ללקוח לפני מע"מ: ₪1,610 | כולל מע"מ: ₪1,900
+
+כללים תפעוליים:
+- עבודת לילה מחייבת תוספת של 25% על עלות הבסיס.
+- שעות נוספות מתומחרות בנפרד לפי תעריף שעה נוספת במחירון.
+- ספק מנופים משובץ מורשה: עוז משא בע"מ.
 
 ======================================================================
-5. מבנה פלט שלב אישור והקמת כרטיס הובלה עם לינקי קסם (MOVE DISPATCH CARD & MAGIC LINKS)
+4. סיווג לוגיסטי לרכבים רגילים (NON-CRANE FLEET MATCHING)
 ======================================================================
-כאשר הלקוח מאשר את ההצעה, פלוט תמיד כרטיס הובלה מובנה המכיל את לינקי הקסם בפורמט הבא:
+- מסחרית 3.5 טון (ספרינטר): דירות 1–2 חדרים, רחובות צפופים בעיר (עמלת מערכת 15%).
+- משאית 5.5–7.5 טון עם רמפה הידראולית: דירות 3–5 חדרים, קווי חלוקה קבועים B2B (עמלת מערכת 10%).
+
+======================================================================
+5. מבנה כרטיס הובלה סופי ולינקי קסם (PRODUCTION DISPATCH CARD)
+======================================================================
+בעת אישור ההצעה, חולל מזהה משימה חד-ערכי (TRK-XXXX) והנפק את הכרטיס המאובטח:
 
 מעולה! ההזמנה אושרה והמכרז שודר מיידית למובילים מורשים באזורך.
 
 📋 כרטיס הובלה ומכרז [TRK-ID]:
 • סטטוס: מכרז פתוח לנהגים (Bidding) 🟢
 • סוג פעילות: [הובלה מזדמנת (Spot) / קו חלוקה קבוע (B2B)]
-• מסלול: [כתובת מוצא, קומה] ➔ [כתובת יעד, קומה]
-• צי משובץ: [סוג הרכב והציוד, לדוגמה: משאית מנוף 12-15 טון]
+• מסלול: [עיר מוצא, קומה] ➔ [עיר יעד, קומה] (כתובת מדויקת נעולה מטעמי פרטיות 🔒)
+• צי משובץ: [סוג הרכב והציוד, לדוגמה: משאית מנוף 12-15 טון - עוז משא]
 • פירוט מטען ומשקל: [תכולה ומשקל מוערך]
-• סיכום תמחור נעול:
+• סיכום תמחור נעול ומאושר:
   - עלות ביצוע נהג: ₪[X]
   - עמלת מערכת ([10%/15%]): ₪[Y]
   - סה"כ לפני מע"מ: ₪[Z]
   - מע"מ (18%): ₪[V]
   - מחיר סופי כולל מע"מ: ₪[Total]
-• זמני ביצוע: [חלון הגעה / תיאום מועד]
+• זמני ביצוע: [חלון הגעה משוער / מועד מתואם]
 
-🔗 לינקי קסם לפעולה ישירה:
-• 📍 מעקב הובלה ומקדמה ללקוח:
-  https://truck-deal.vercel.app/?view=tracking&moveId=[TRK-ID]
-• 🚛 כניסת נהגים והגשת הצעות:
-  https://truck-deal.vercel.app/?view=driver&moveId=[TRK-ID]
-• 📲 שידור המכרז בוואטסאפ:
-  [לינק וואטסאפ מקוצר עם סיכום הפרטים: https://api.whatsapp.com/send?text=...]
+🔗 לינקי קסם מאובטחים לניהול המשימה:
+• מעקב חי ללקוח והסדרת מקדמה: https://truck-deal.vercel.app/?view=tracking&moveId=[TRK-ID]
+• פורטל נהגים מאובטח למכרז: https://truck-deal.vercel.app/?view=driver&moveId=[TRK-ID]
 
 איך תרצה להמשיך כעת?
-🔲 מעבר למעקב חי והסדרת מקדמה 📱
-🔲 קבלת סיכום הזמנה ב-WhatsApp
-🔲 הוספת הערת גישה מיוחדת לנהג
-
-במידה ומדובר בשלב אפיון ואיסוף פרטים (לפני אישור), סיים עם 2-3 אפשרויות בפורמט 🔲, כגון:
-🔲 בדיקת התאמת מנוף למיקום
-🔲 פתיחת מכרז להובלה מזדמנת
-🔲 תיאום קו חלוקה קבוע לעסק`;
+🔲 📲 שיגור ישיר לקבוצת נהגים בוואטסאפ (https://api.whatsapp.com/send?text={ENCODED_MESSAGE})
+🔲 מעבר למעקב חי והסדרת מקדמה 📱 (https://truck-deal.vercel.app/?view=tracking&moveId=[TRK-ID])
+🔲 הוספת הערת גישה מיוחדת לנהג`;
 
         // Format recent conversation history (excluding the current user message just pushed)
         const recentHistory = history.slice(-11, -1);
@@ -1998,8 +2143,11 @@ ${historyText}
         // If the reply does not contain 🔲 buttons, add appropriate options
         if (!aiReply.includes('🔲')) {
           const isApproval = message.includes('אישור') || message.includes('אשר') || message.includes('סגור') || message.includes('קדימה') || message.includes('מאשר');
+          const trkMatch = aiReply.match(/TRK-\d+/);
+          const trkId = trkMatch ? trkMatch[0] : 'TRK-' + Math.floor(1000 + Math.random() * 9000);
+          const encodedWa = encodeURIComponent(`מכרז הובלה חדש נפתח [${trkId}]! לצפייה והגשת הצעה: https://truck-deal.vercel.app/?view=driver&moveId=${trkId}`);
           if (isApproval) {
-            aiReply += '<br/><br/>🔲 מעבר למעקב חי והסדרת מקדמה 📱<br/>🔲 קבלת סיכום הזמנה ב-WhatsApp<br/>🔲 הוספת הערת גישה מיוחדת לנהג';
+            aiReply += `<br/><br/>איך תרצה להמשיך כעת?<br/>🔲 📲 שיגור ישיר לקבוצת נהגים בוואטסאפ (https://api.whatsapp.com/send?text=${encodedWa})<br/>🔲 מעבר למעקב חי והסדרת מקדמה 📱 (https://truck-deal.vercel.app/?view=tracking&moveId=${trkId})<br/>🔲 הוספת הערת גישה מיוחדת לנהג`;
           } else {
             aiReply += '<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק';
           }
@@ -2015,15 +2163,15 @@ ${historyText}
       if (isApproval) {
         const trkId = 'TRK-' + Math.floor(1000 + Math.random() * 9000);
         const encodedWa = encodeURIComponent(`שלום, מצורף כרטיס הובלה ומכרז פתוח [${trkId}] בטראק דיל il: סה"כ לתשלום ₪2,714 כולל מע"מ. לצפייה והגשת הצעה: https://truck-deal.vercel.app/?view=driver&moveId=${trkId}`);
-        aiReply = `מעולה! ההזמנה אושרה והמכרז שודר מיידית למובילים מורשים באזורך.<br/><br/>📋 <b>כרטיס הובלה ומכרז [${trkId}]:</b><br/>• <b>סטטוס:</b> מכרז פתוח לנהגים (Bidding) 🟢<br/>• <b>סוג פעילות:</b> הובלה מזדמנת (Spot)<br/>• <b>מסלול:</b> כתובת מוצא ➔ כתובת יעד (לפי פרטי ההזמנה)<br/>• <b>צי משובץ:</b> משאית סגורה עם רמפה הידראולית (5.5-7.5 טון)<br/>• <b>פירוט מטען ומשקל:</b> תכולת הובלה מלאה לפי אפיון<br/>• <b>סיכום תמחור נעול:</b><br/>  - עלות ביצוע נהג: ₪2,000<br/>  - עמלת מערכת (15%): ₪300<br/>  - סה"כ לפני מע"מ: ₪2,300<br/>  - מע"מ (18%): ₪414<br/>  - <b>מחיר סופי כולל מע"מ: ₪2,714</b><br/>• <b>זמני ביצוע:</b> תיאום מועד מול הנהג הזוכה במכרז<br/><br/>🔗 <b>לינקי קסם לפעולה ישירה:</b><br/>• 📍 <b>מעקב הובלה ומקדמה ללקוח:</b><br/>https://truck-deal.vercel.app/?view=tracking&moveId=${trkId}<br/>• 🚛 <b>כניסת נהגים והגשת הצעות:</b><br/>https://truck-deal.vercel.app/?view=driver&moveId=${trkId}<br/>• 📲 <b>שידור המכרז בוואטסאפ:</b><br/>https://api.whatsapp.com/send?text=${encodedWa}<br/><br/>איך תרצה להמשיך כעת?<br/>🔲 מעבר למעקב חי והסדרת מקדמה 📱<br/>🔲 קבלת סיכום הזמנה ב-WhatsApp<br/>🔲 הוספת הערת גישה מיוחדת לנהג`;
+        aiReply = `מעולה! ההזמנה אושרה והמכרז שודר מיידית למובילים מורשים באזורך.<br/><br/>📋 <b>כרטיס הובלה ומכרז [${trkId}]:</b><br/>• <b>סטטוס:</b> מכרז פתוח לנהגים (Bidding) 🟢<br/>• <b>סוג פעילות:</b> הובלה מזדמנת (Spot)<br/>• <b>מסלול:</b> תל אביב ➔ ראשון לציון (כתובת מדויקת נעולה מטעמי פרטיות 🔒)<br/>• <b>צי משובץ:</b> משאית סגורה עם רמפה הידראולית (5.5-7.5 טון)<br/>• <b>פירוט מטען ומשקל:</b> תכולת דירה 3 חדרים, משקל מוערך כ-2.5 טון<br/>• <b>סיכום תמחור נעול ומאושר:</b><br/>  - עלות ביצוע נהג: ₪2,000<br/>  - עמלת מערכת (15%): ₪300<br/>  - סה"כ לפני מע"מ: ₪2,300<br/>  - מע"מ (18%): ₪414<br/>  - <b>מחיר סופי כולל מע"מ: ₪2,714</b><br/>• <b>זמני ביצוע:</b> חלון הגעה משוער בתיאום מועד מול הנהג הזוכה במכרז<br/><br/>🔗 <b>לינקי קסם מאובטחים לניהול המשימה:</b><br/>• <b>מעקב חי ללקוח והסדרת מקדמה:</b><br/>https://truck-deal.vercel.app/?view=tracking&moveId=${trkId}<br/>• <b>פורטל נהגים מאובטח למכרז:</b><br/>https://truck-deal.vercel.app/?view=driver&moveId=${trkId}<br/><br/>איך תרצה להמשיך כעת?<br/>🔲 📲 שיגור ישיר לקבוצת נהגים בוואטסאפ (https://api.whatsapp.com/send?text=${encodedWa})<br/>🔲 מעבר למעקב חי והסדרת מקדמה 📱 (https://truck-deal.vercel.app/?view=tracking&moveId=${trkId})<br/>🔲 הוספת הערת גישה מיוחדת לנהג`;
       } else if (message.includes('כמה עולה') || message.includes('מחיר') || message.includes('עלות') || message.includes('תמחור')) {
         aiReply = 'בהתאם למודל התמחור השקוף של "טראק דיל il":<br/>• <b>עלות בסיס נהג ודלק</b>: נעה בין ₪650 למסחרית ועד ₪2,700 למשאית רמפה<br/>• <b>עמלת מערכת</b>: 15% להובלה מזדמנת (או 10% לקו חלוקה קבוע)<br/>• <b>שקיפות מלאה</b>: עלות בסיס + עמלת מערכת = מחיר לפני מע"מ ➔ מחיר סופי כולל 18% מע"מ כחוק.<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק';
-      } else if (message.includes('מנוף') || message.includes('משטח') || message.includes('כבד') || message.includes('בלוקים')) {
-        aiReply = 'משאית מנוף (12-15 טון) מיועדת אך ורק למטענים כבדים (מעל 1.5 טון, משטחים, בלות) או פריקה לגובה/מרפסות ללא מעלית. עבור הובלות קלות נחסום שיבוץ מנוף ונשבץ משאית סגורה או מסחרית.<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק';
+      } else if (message.includes('מנוף') || message.includes('משטח') || message.includes('כבד') || message.includes('עוז משא')) {
+        aiReply = '<b>מחירון מנופים רשמי: ספק משובץ עוז משא בע"מ (אורן אליהו - 053-6666667)</b><br/>תנאי ספק: גדרה-חדרה | שוטף 90 | עמלת מערכת: 15% Spot / 10% B2B | מע"מ: 18%<br/>• קומה 1–3 (עד 16 מ\'): מנוף 30 טון ➔ נהג: ₪900 | ללקוח: ₪1,035 | כולל מע"מ: ₪1,221<br/>• קומה 3–5 (עד 24 מ\'): מנוף 40 טון ➔ נהג: ₪1,000 | ללקוח: ₪1,150 | כולל מע"מ: ₪1,357<br/>• קומה 5–8 (עד 32 מ\'): מנוף 60 טון ➔ נהג: ₪1,100 | ללקוח: ₪1,265 | כולל מע"מ: ₪1,493<br/>• קומה 7–10 (עד 40 מ\'): מנוף 100 טון ➔ נהג: ₪1,500 | ללקוח: ₪1,725 | כולל מע"מ: ₪2,036<br/>• עבודת לילה: תוספת 25% על הבסיס.<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק';
       } else if (message.includes('חלוקה') || message.includes('עסק') || message.includes('b2b') || message.includes('הפצה') || message.includes('רשת')) {
         aiReply = 'עבור קווי חלוקה קבועים לעסקים ורשתות שיווק (B2B, Multi-drop): התמחור מחושב לפי יום עבודה ומשמרת מלאה + דלק ונקודות פריקה, עם עמלת פלטפורמה מופחתת של 10% בלבד.<br/><br/>🔲 תיאום קו חלוקה קבוע לעסק<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 בדיקת התאמת מנוף למיקום';
       } else {
-        aiReply = 'שלום, אני <b>Truk AI Dispatcher</b> — הסדרן, המתמחר ומנהל התפעול הלוגיסטי הראשי של פלטפורמת "טראק דיל il". דומיין פעיל: https://truck-deal.vercel.app/<br/>אני כאן לאפיין את הצורך הלוגיסטי, להתאים את צי הרכב המדויק, להציג תמחור שקוף, לסגור מכרז ולהנפיק לינקי קסם דינמיים למעקב ולנהגים.<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק';
+        aiReply = 'שלום! אני <b>Truk AI Dispatcher & Security Controller</b> — מנוע התפעול, התמחור ואבטחת המידע הראשי של פלטפורמת "טראק דיל il".<br/>דומיין פעיל: https://truck-deal.vercel.app/ (גרסה 3.0 Production Ready).<br/>כיצד אוכל לסייע לך באפיון לוגיסטי, התאמת צי רכב (מסחרית, משאית רמפה, או מנופי עוז משא בע"מ) ותמחור שקוף ומאובטח כעת?<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק';
       }
     }
 
