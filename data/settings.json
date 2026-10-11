@@ -1,5 +1,17 @@
-{
-  "makeWebhookUrl": "https://hook.eu2.make.com/j2pelnnmtof85ug8y15limckfeclpglo",
-  "googleScriptUrl": "https://script.google.com/macros/s/AKfycbyDiRrXdNdcYaa9VY29x6qVsumayrOBD0yHzEHosbuncvsRd-mNSaM_xEenhThsANN-/exec",
-  "googleSheetId": "1Hch4csBenIwr9vt6XlyzTQ0z88LIo1917w0NPYKXqTc"
-}
+# Make.com / WhatsApp Dispatch Webhook
+MAKE_WEBHOOK_URL=https://hook.eu2.make.com/j2pelnnmtof85ug8y15limckfeclpglo
+
+# Google Apps Script Webhook
+GOOGLE_SCRIPT_URL=https://script.google.com/macros/s/AKfycbyDiRrXdNdcYaa9VY29x6qVsumayrOBD0yHzEHosbuncvsRd-mNSaM_xEenhThsANN-/exec
+VITE_GAS_WEBAPP_URL=https://script.google.com/macros/s/AKfycbyDiRrXdNdcYaa9VY29x6qVsumayrOBD0yHzEHosbuncvsRd-mNSaM_xEenhThsANN-/exec
+
+# Google Spreadsheet ID
+GOOGLE_SHEET_ID=1Hch4csBenIwr9vt6XlyzTQ0z88LIo1917w0NPYKXqTc
+VITE_SPREADSHEET_ID=1Hch4csBenIwr9vt6XlyzTQ0z88LIo1917w0NPYKXqTc
+
+# Google Drive Storage Folder
+GOOGLE_DRIVE_FOLDER_ID=1_9vxDiPP51-GtUEeqsojmp5d1z7D8UoG
+VITE_DRIVE_FOLDER_ID=1_9vxDiPP51-GtUEeqsojmp5d1z7D8UoG
+
+# Admin Authentication
+VITE_ADMIN_PASSWORD=Rami1125
