@@ -2,7 +2,6 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 
 // Load environment variables
@@ -10,6 +9,25 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
+
+// Enable CORS for all incoming client and external requests
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// Normalize incoming path so both /api/moves and /moves route properly in serverless environments
+app.use((req, res, next) => {
+  if (req.url && !req.url.startsWith('/api') && req.url !== '/' && !req.url.startsWith('/index.html') && !req.url.startsWith('/assets/')) {
+    req.url = '/api' + req.url;
+  }
+  next();
+});
 
 // Increase payload limits for Base64 image transfers
 app.use(express.json({ limit: '50mb' }));
@@ -1380,10 +1398,8 @@ app.delete('/api/drivers/:id', (req, res) => {
 // GET application settings
 app.get('/api/settings', (req, res) => {
   try {
-    let settings: any = { makeWebhookUrl: '' };
-    if (fs.existsSync(SETTINGS_FILE)) {
-      settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
-    }
+    const raw = readDatabase<any>(SETTINGS_FILE, [{ makeWebhookUrl: '' }]);
+    const settings = Array.isArray(raw) ? (raw[0] || { makeWebhookUrl: '' }) : (raw || { makeWebhookUrl: '' });
     res.json(settings);
   } catch (error) {
     console.error('Error fetching settings:', error);
@@ -1394,8 +1410,8 @@ app.get('/api/settings', (req, res) => {
 // POST update application settings
 app.post('/api/settings', (req, res) => {
   try {
-    const newSettings = req.body;
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(newSettings, null, 2));
+    const newSettings = req.body || {};
+    writeDatabase(SETTINGS_FILE, [newSettings]);
     res.json({ success: true, settings: newSettings });
   } catch (error) {
     console.error('Error updating settings:', error);
@@ -1898,10 +1914,21 @@ ${historyText}
   }
 });
 
+// Global Error Handler to guarantee JSON responses and prevent unhandled crashes
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('[API Server Error]:', err?.message || err);
+  if (!res.headersSent) {
+    res.status(500).json({
+      error: err?.message || 'שגיאת שרת פנימית',
+      status: 500
+    });
+  }
+});
 
 /* --- VITE MIDDLEWARE SETUP & SERVER INITIALIZATION --- */
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
