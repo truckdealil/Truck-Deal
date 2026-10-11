@@ -2,8 +2,8 @@
 MAKE_WEBHOOK_URL=https://hook.eu2.make.com/j2pelnnmtof85ug8y15limckfeclpglo
 
 # Google Apps Script Webhook
-GOOGLE_SCRIPT_URL=https://script.google.com/macros/s/AKfycbyDiRrXdNdcYaa9VY29x6qVsumayrOBD0yHzEHosbuncvsRd-mNSaM_xEenhThsANN-/exec
-VITE_GAS_WEBAPP_URL=https://script.google.com/macros/s/AKfycbyDiRrXdNdcYaa9VY29x6qVsumayrOBD0yHzEHosbuncvsRd-mNSaM_xEenhThsANN-/exec
+GOOGLE_SCRIPT_URL=https://script.google.com/macros/s/AKfycbz_SOxvi6v1-fobrRUYfkmgDO5CjGCfCjz798boG0ZLCOiN2AWV--z3o7U_QkLGBGa3/exec
+VITE_GAS_WEBAPP_URL=https://script.google.com/macros/s/AKfycbz_SOxvi6v1-fobrRUYfkmgDO5CjGCfCjz798boG0ZLCOiN2AWV--z3o7U_QkLGBGa3/exec
 
 # Google Spreadsheet ID
 GOOGLE_SHEET_ID=1Hch4csBenIwr9vt6XlyzTQ0z88LIo1917w0NPYKXqTc
