@@ -51,7 +51,9 @@ export default function DriverBidPage({ initialMoveId, onBidSubmitted }: DriverB
     try {
       const response = await fetch(`/api/moves/${id}`);
       if (!response.ok) {
-        throw new Error('לא נמצאה הובלה התואמת למזהה זה');
+        const errText = await response.text().catch(() => '');
+        console.error(`[DriverBidPage GET /api/moves/${id} Error]: HTTP ${response.status}:`, errText);
+        throw new Error(`לא נמצאה הובלה התואמת למזהה זה (קוד ${response.status})`);
       }
       const data = await response.json();
       setMove(data);
@@ -90,8 +92,9 @@ export default function DriverBidPage({ initialMoveId, onBidSubmitted }: DriverB
       });
 
       if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || 'שגיאה בהגשת הצעת המחיר');
+        const errData = await response.json().catch(async () => ({ error: await response.text().catch(() => '') }));
+        console.error(`[DriverBidPage POST /api/moves/${move.id}/bids Error]: HTTP ${response.status}:`, errData);
+        throw new Error(errData.error || `שגיאה בהגשת הצעת המחיר (${response.status})`);
       }
 
       setSuccess(true);

@@ -15,10 +15,18 @@ const PORT = 3000;
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Ensure data directory exists
-const DATA_DIR = path.join(process.cwd(), 'data');
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR);
+// Determine active database directory:
+// On Vercel Serverless, root filesystem is read-only except /tmp
+const IS_VERCEL = Boolean(process.env.VERCEL);
+const DATA_DIR = IS_VERCEL ? '/tmp' : path.join(process.cwd(), 'data');
+const SEED_DATA_DIR = path.join(process.cwd(), 'data');
+
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+} catch (err: any) {
+  console.warn(`[Storage] Could not create directory ${DATA_DIR}:`, err?.message || err);
 }
 
 const MOVES_FILE = path.join(DATA_DIR, 'moves.json');
@@ -28,28 +36,99 @@ const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const TRUCKS_FILE = path.join(DATA_DIR, 'trucks.json');
 const SHIFTS_FILE = path.join(DATA_DIR, 'shifts.json');
 const CHATS_FILE = path.join(DATA_DIR, 'chats.json');
+const CONCIERGE_CHATS_FILE = path.join(DATA_DIR, 'concierge_chats.json');
 
-// Helper to read database
+// Global In-Memory Fallback Cache to survive EROFS / ephemeral environments
+const inMemoryCache: Record<string, any[]> = {};
+let movesCache: any[] = [];
+let driversCache: any[] = [];
+let leadsCache: any[] = [];
+let settingsCache: any[] = [];
+let chatsCache: any[] = [];
+let conciergeChatsCache: any[] = [];
+
+// Helper to keep named global cache variables in sync
+const syncGlobalCache = (fileName: string, data: any[]) => {
+  if (fileName === 'moves.json') movesCache = data;
+  else if (fileName === 'drivers.json') driversCache = data;
+  else if (fileName === 'leads.json') leadsCache = data;
+  else if (fileName === 'settings.json') settingsCache = data;
+  else if (fileName === 'chats.json') chatsCache = data;
+  else if (fileName === 'concierge_chats.json') conciergeChatsCache = data;
+};
+
+// Resilient Helper to read database (Memory Cache -> /tmp File -> Project seed file -> Defaults)
 const readDatabase = <T>(filePath: string, defaultValue: any = []): T[] => {
+  const fileName = path.basename(filePath);
+
+  // 1. If available in memory cache, return it
+  if (inMemoryCache[fileName] && inMemoryCache[fileName].length > 0) {
+    return inMemoryCache[fileName] as T[];
+  }
+
   try {
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, JSON.stringify(defaultValue, null, 2));
-      return defaultValue;
+    // 2. Try reading from target path (e.g. /tmp/moves.json or data/moves.json)
+    if (fs.existsSync(filePath)) {
+      const data = fs.readFileSync(filePath, 'utf-8');
+      const parsed = JSON.parse(data) as T[];
+      inMemoryCache[fileName] = parsed;
+      syncGlobalCache(fileName, parsed);
+      return parsed;
     }
-    const data = fs.readFileSync(filePath, 'utf-8');
-    return JSON.parse(data) as T[];
-  } catch (error) {
-    console.error(`Error reading database file ${filePath}:`, error);
+
+    // 3. In Vercel / serverless environment, if /tmp doesn't have the file yet, seed from project repository data/
+    if (IS_VERCEL) {
+      const seedFilePath = path.join(SEED_DATA_DIR, fileName);
+      if (fs.existsSync(seedFilePath)) {
+        try {
+          const seedContent = fs.readFileSync(seedFilePath, 'utf-8');
+          const parsed = JSON.parse(seedContent) as T[];
+          inMemoryCache[fileName] = parsed;
+          syncGlobalCache(fileName, parsed);
+
+          // Write to /tmp for subsequent reads
+          try {
+            fs.writeFileSync(filePath, seedContent, 'utf-8');
+          } catch (writeErr) {
+            console.warn(`[Storage] Could not seed file ${filePath}:`, writeErr);
+          }
+          return parsed;
+        } catch (seedErr) {
+          console.warn(`[Storage] Error loading seed file ${seedFilePath}:`, seedErr);
+        }
+      }
+    }
+
+    // 4. Default fallback: write default value if possible and cache in memory
+    inMemoryCache[fileName] = defaultValue;
+    syncGlobalCache(fileName, defaultValue);
+    try {
+      fs.writeFileSync(filePath, JSON.stringify(defaultValue, null, 2));
+    } catch (writeErr) {
+      // EROFS or filesystem restriction - safe to ignore since memory cache is active
+      console.warn(`[Storage] Filesystem write ignored for ${filePath}. Retained in memory.`);
+    }
     return defaultValue;
+  } catch (error: any) {
+    console.error(`[Storage] Error reading database file ${filePath}:`, error?.message || error);
+    const fallback = inMemoryCache[fileName] || defaultValue;
+    inMemoryCache[fileName] = fallback;
+    syncGlobalCache(fileName, fallback);
+    return fallback as T[];
   }
 };
 
-// Helper to write database
+// Resilient Helper to write database (Always updates In-Memory Cache first, then writes to disk with EROFS protection)
 const writeDatabase = <T>(filePath: string, data: T[]): void => {
+  const fileName = path.basename(filePath);
+  // Guarantee memory update immediately
+  inMemoryCache[fileName] = data;
+  syncGlobalCache(fileName, data);
+
   try {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-  } catch (error) {
-    console.error(`Error writing database file ${filePath}:`, error);
+  } catch (error: any) {
+    console.warn(`[Storage] Notice: filesystem write skipped for ${filePath} (${error?.message || error}). Data safely retained in server memory.`);
   }
 };
 
@@ -1090,6 +1169,17 @@ app.post('/api/leads', async (req, res) => {
       notes: newLead.notes,
     });
 
+    // Send to Make.com Webhook for CRM alerts
+    sendToMakeWebhook({
+      action: 'create_lead',
+      leadId: newLead.id,
+      fullName: newLead.fullName,
+      phone: newLead.phone,
+      email: newLead.email,
+      companyName: newLead.companyName,
+      message: `ליד חדש התקבל ב-CRM טראק דיל il: ${newLead.fullName} (${newLead.phone})`
+    });
+
     res.status(201).json(newLead);
   } catch (error) {
     console.error('Error creating CRM lead:', error);
@@ -1569,8 +1659,6 @@ app.post('/api/settings/test-webhook', async (req, res) => {
 });
 
 // AI Concierge Chat History and Real-time Pipelines (Zero-Dummy Data Firebase simulator)
-const CONCIERGE_CHATS_FILE = path.join(DATA_DIR, 'concierge_chats.json');
-
 app.get('/api/concierge/history', (req, res) => {
   try {
     const history = readDatabase<any>(CONCIERGE_CHATS_FILE, []);
@@ -1811,7 +1899,7 @@ ${historyText}
 });
 
 
-/* --- VITE MIDDLEWARE SETUP --- */
+/* --- VITE MIDDLEWARE SETUP & SERVER INITIALIZATION --- */
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -1827,9 +1915,22 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Truk Dealil IL Fullstack Server running on http://localhost:${PORT}`);
-  });
+  // Guard app.listen to prevent duplicate listening in Vercel Serverless environment
+  if (!process.env.VERCEL && process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Truk Dealil IL Fullstack Server running on http://localhost:${PORT}`);
+    });
+  } else if (!process.env.VERCEL) {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Truk Dealil IL Production Server running on port ${PORT}`);
+    });
+  }
 }
 
-startServer();
+// In non-Vercel environments (local dev or container), start server and listen
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
+

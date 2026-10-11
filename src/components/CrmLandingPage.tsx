@@ -261,14 +261,16 @@ export default function CrmLandingPage({ onNavigateToQuote }: CrmLandingPageProp
       });
 
       if (!response.ok) {
-        throw new Error('שגיאה בשמירת הבקשה במערכת.');
+        const errText = await response.text().catch(() => '');
+        console.error(`[CrmLandingPage POST /api/moves Error]: HTTP ${response.status} (${response.statusText}):`, errText);
+        throw new Error(`שגיאה בשמירת הבקשה במערכת (${response.status}): ${errText || response.statusText}`);
       }
 
       const savedMove = await response.json();
       setQuoteResult(savedMove);
-    } catch (err) {
-      console.error(err);
-      setErrorMsg('אירעה שגיאה בשמירת הנתונים או בניתוח ה-AI. אנא נסו שוב.');
+    } catch (err: any) {
+      console.error('[CrmLandingPage Quote Error]:', err);
+      setErrorMsg(err?.message || 'אירעה שגיאה בשמירת הנתונים או בניתוח ה-AI. אנא נסו שוב.');
     } finally {
       setSubmitting(false);
       setAiAnalyzing(false);
@@ -1081,7 +1083,9 @@ export default function CrmLandingPage({ onNavigateToQuote }: CrmLandingPageProp
                 alert('פנייתכם התקבלה בהצלחה ב-CRM! ניצור קשר בהקדם.');
                 target.reset();
               } else {
-                alert('שגיאה ברישום הליד. אנא נסו שוב.');
+                const errText = await response.text().catch(() => '');
+                console.error(`[CrmLandingPage POST /api/leads Error]: HTTP ${response.status} (${response.statusText}):`, errText);
+                alert(`שגיאה ברישום הליד (${response.status}). אנא נסו שוב.`);
               }
             }}
             className="space-y-6"

@@ -90,7 +90,9 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
         };
         setMessages(prev => [...prev, aiMsg]);
       } else {
-        throw new Error('שגיאה בתקשורת מול ה-AI');
+        const errText = await res.text().catch(() => '');
+        console.error(`[AIConcierge POST /api/concierge/chat Error]: HTTP ${res.status}:`, errText);
+        throw new Error(`שגיאה בתקשורת מול ה-AI (${res.status})`);
       }
     } catch (err) {
       console.error(err);

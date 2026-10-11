@@ -81,7 +81,10 @@ export default function AdminDashboard() {
       ]);
 
       if (!movesRes.ok || !leadsRes.ok) {
-        throw new Error('שגיאה בשליפת נתוני הניהול מהשרת');
+        const movesErr = !movesRes.ok ? await movesRes.text().catch(() => '') : '';
+        const leadsErr = !leadsRes.ok ? await leadsRes.text().catch(() => '') : '';
+        console.error('[AdminDashboard fetchAdminData Error]:', { movesStatus: movesRes.status, movesErr, leadsStatus: leadsRes.status, leadsErr });
+        throw new Error(`שגיאה בשליפת נתוני הניהול מהשרת (moves: ${movesRes.status}, leads: ${leadsRes.status})`);
       }
 
       const movesData = await movesRes.json();

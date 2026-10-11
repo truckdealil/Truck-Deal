@@ -302,7 +302,9 @@ export default function MoveForm({ onMoveCreated }: MoveFormProps) {
       });
 
       if (!response.ok) {
-        throw new Error('שגיאה בשמירת בקשת המכרז בשרת.');
+        const errorText = await response.text().catch(() => '');
+        console.error(`[MoveForm POST /api/moves Error]: HTTP ${response.status} (${response.statusText}):`, errorText);
+        throw new Error(`שגיאה בשמירת בקשת המכרז בשרת (${response.status}): ${errorText || response.statusText}`);
       }
 
       const savedMove = await response.json();
@@ -315,9 +317,9 @@ export default function MoveForm({ onMoveCreated }: MoveFormProps) {
         onMoveCreated(savedMove);
       }, 3500);
 
-    } catch (err) {
-      console.error(err);
-      setValidationError('אירעה שגיאה בחיבור לשרת או בפרסום המכרז. אנא נסה שוב.');
+    } catch (err: any) {
+      console.error('[MoveForm Submission Failed]:', err);
+      setValidationError(err?.message || 'אירעה שגיאה בחיבור לשרת או בפרסום המכרז. אנא נסה שוב.');
       setSubmitting(false);
     }
   };

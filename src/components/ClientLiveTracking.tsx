@@ -99,9 +99,11 @@ export default function ClientLiveTracking({ moveId, onBackToLanding }: ClientLi
 
     setLoading(true);
     fetch(`/api/moves/${moveId}`)
-      .then((res) => {
+      .then(async (res) => {
         if (!res.ok) {
-          throw new Error('ההובלה לא נמצאה במערכת או שהקישור אינו תקין');
+          const errText = await res.text().catch(() => '');
+          console.error(`[ClientLiveTracking GET /api/moves/${moveId} Error]: HTTP ${res.status}:`, errText);
+          throw new Error(`ההובלה לא נמצאה במערכת (קוד ${res.status}) או שהקישור אינו תקין`);
         }
         return res.json();
       })
