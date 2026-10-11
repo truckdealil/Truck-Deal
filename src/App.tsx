@@ -22,7 +22,9 @@ export default function App() {
   const [selectedMoveId, setSelectedMoveId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Extract URL parameters to support WhatsApp link simulation
+  const isAdminLoggedIn = localStorage.getItem('truckdeal_admin_auth') === 'true';
+  const isDriverLoggedIn = !!localStorage.getItem('truk_active_driver_session');
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const viewParam = params.get('view');
@@ -49,7 +51,6 @@ export default function App() {
     setSelectedMoveId(moveId);
     setMobileMenuOpen(false);
 
-    // Update URL parameters for testing convenience
     const newUrl = new URL(window.location.href);
     if (targetView === 'driver' && moveId) {
       newUrl.searchParams.set('view', 'driver');
@@ -127,7 +128,8 @@ export default function App() {
               }`}
             >
               <Truck className="w-4 h-4" />
-              <span>פורטל נהגים (WhatsApp)</span>
+              <span>פורטל נהגים</span>
+              {isDriverLoggedIn && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />}
             </button>
 
             {selectedMoveId && (
@@ -150,6 +152,7 @@ export default function App() {
             >
               <ShieldCheck className="w-4 h-4" />
               <span>מערכת ניהול (Admin)</span>
+              {isAdminLoggedIn && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />}
             </button>
           </nav>
 
@@ -190,7 +193,7 @@ export default function App() {
               view === 'driver' ? 'bg-orange-electric text-white' : 'text-gray-300'
             }`}
           >
-            פורטל נהגים (WhatsApp Link)
+            פורטל נהגים
           </button>
           {selectedMoveId && (
             <button
@@ -224,14 +227,12 @@ export default function App() {
             <div className="text-center mb-6 max-w-xl mx-auto px-4">
               <h1 className="text-3xl font-extrabold text-white">הגשת בקשת הובלה ומכרז</h1>
               <p className="text-sm text-gray-400 mt-2">
-                מלא את פרטי ההובלה והתכולה להלן. מנוע הבינה המלאכותית שלנו יחשב עבורך עלות אומדן מונעת סיכונים, והמערכת תפיץ את המכרז לנהגים מורשים.
+                מלא את פרטי ההובלה והתכולה. המערכת תנתח את המטען ותפיץ את המכרז לנהגים מורשים.
               </p>
             </div>
             <MoveForm 
               onMoveCreated={(newMove) => {
-                // Keep track of the newly created move so we can simulated-navigate drivers to it
                 setSelectedMoveId(newMove.id);
-                // Immediately navigate to the tracking view so they see the real-time feedback
                 handleNavigate('tracking', newMove.id);
               }} 
             />
@@ -242,7 +243,7 @@ export default function App() {
           <DriverBidPage 
             initialMoveId={selectedMoveId} 
             onBidSubmitted={() => {
-              console.log('Bid submitted - returning to details');
+              console.log('Bid submitted');
             }}
           />
         )}
@@ -266,14 +267,11 @@ export default function App() {
         )}
       </main>
 
-      {/* Footer copyright */}
       <footer className="bg-navy-950 border-t border-navy-900 py-6 text-center text-xs text-gray-600">
-        <p>© {new Date().getFullYear()} טראק דיל il (Truk Dealil IL). כל הזכויות שמורות. מערכת קוד מלאה ואינטגרציות Webhook.</p>
+        <p>© {new Date().getFullYear()} טראק דיל il (Truk Dealil IL). כל הזכויות שמורות.</p>
       </footer>
 
-      {/* Floating AI Concierge Smart Helper */}
       <AIConcierge onNavigate={handleNavigate} />
     </div>
   );
 }
-
