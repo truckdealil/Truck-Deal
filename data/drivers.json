@@ -38,5 +38,23 @@
     "rating": 4.7,
     "completedMoves": 85,
     "status": "active"
+  },
+  {
+    "id": "driver_x4gdth7vy",
+    "fullName": "יוסי מנופים",
+    "phone": "0529998877",
+    "region": "מרכז והשרון",
+    "truckType": "משאית 12 טון + מנוף קבוע",
+    "truckPlate": "11-222-33",
+    "rating": 5,
+    "completedMoves": 0,
+    "status": "active",
+    "email": "",
+    "maxWeight": "12 טון",
+    "testExpiryDate": "",
+    "insuranceExpiryDate": "",
+    "profilePhoto": "",
+    "truckPhoto": "",
+    "updatedAt": "2026-10-12T05:00:52.989Z"
   }
 ]

@@ -14,11 +14,12 @@ import DriverBidPage from './components/DriverBidPage';
 import AdminDashboard from './components/AdminDashboard';
 import ClientLiveTracking from './components/ClientLiveTracking';
 import ClientFeedbackPage from './components/ClientFeedbackPage';
+import DriverRegistrationPage from './components/DriverRegistrationPage';
 import AIConcierge from './components/AIConcierge';
 import { MoveRequest } from './types';
 
 export default function App() {
-  const [view, setView] = useState<'landing' | 'quote' | 'driver' | 'admin' | 'tracking' | 'feedback'>('landing');
+  const [view, setView] = useState<'landing' | 'quote' | 'driver' | 'admin' | 'tracking' | 'feedback' | 'driver-register'>('landing');
   const [selectedMoveId, setSelectedMoveId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -43,10 +44,12 @@ export default function App() {
       setView('admin');
     } else if (viewParam === 'quote') {
       setView('quote');
+    } else if (viewParam === 'driver-register') {
+      setView('driver-register');
     }
   }, []);
 
-  const handleNavigate = (targetView: 'landing' | 'quote' | 'driver' | 'admin' | 'tracking' | 'feedback', moveId: string | null = null) => {
+  const handleNavigate = (targetView: 'landing' | 'quote' | 'driver' | 'admin' | 'tracking' | 'feedback' | 'driver-register', moveId: string | null = null) => {
     setView(targetView);
     setSelectedMoveId(moveId);
     setMobileMenuOpen(false);
@@ -63,6 +66,12 @@ export default function App() {
       newUrl.searchParams.set('moveId', moveId);
     } else if (targetView === 'admin') {
       newUrl.searchParams.set('view', 'admin');
+      newUrl.searchParams.delete('moveId');
+    } else if (targetView === 'driver-register') {
+      newUrl.searchParams.set('view', 'driver-register');
+      newUrl.searchParams.delete('moveId');
+    } else if (targetView === 'quote') {
+      newUrl.searchParams.set('view', 'quote');
       newUrl.searchParams.delete('moveId');
     } else {
       newUrl.searchParams.delete('view');
@@ -132,6 +141,18 @@ export default function App() {
               {isDriverLoggedIn && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />}
             </button>
 
+            <button
+              onClick={() => handleNavigate('driver-register')}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                view === 'driver-register' 
+                  ? 'bg-orange-electric text-white font-bold shadow-md' 
+                  : 'text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/10'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>הרשמת נהגים ומנופים 🚜</span>
+            </button>
+
             {selectedMoveId && (
               <button
                 onClick={() => handleNavigate('tracking', selectedMoveId)}
@@ -195,6 +216,16 @@ export default function App() {
           >
             פורטל נהגים
           </button>
+          <button
+            onClick={() => handleNavigate('driver-register')}
+            className={`w-full py-2.5 px-4 rounded-xl text-right font-bold block ${
+              view === 'driver-register' 
+                ? 'bg-orange-electric text-white' 
+                : 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'
+            }`}
+          >
+            🚜 הרשמת נהגים ומנופים
+          </button>
           {selectedMoveId && (
             <button
               onClick={() => handleNavigate('tracking', selectedMoveId)}
@@ -219,7 +250,10 @@ export default function App() {
       {/* Main Container */}
       <main className="flex-1">
         {view === 'landing' && (
-          <CrmLandingPage onNavigateToQuote={() => handleNavigate('quote')} />
+          <CrmLandingPage 
+            onNavigateToQuote={() => handleNavigate('quote')} 
+            onNavigateToDriverRegister={() => handleNavigate('driver-register')}
+          />
         )}
         
         {view === 'quote' && (
@@ -245,6 +279,7 @@ export default function App() {
             onBidSubmitted={() => {
               console.log('Bid submitted');
             }}
+            onNavigateToRegister={() => handleNavigate('driver-register')}
           />
         )}
 
@@ -257,6 +292,13 @@ export default function App() {
 
         {view === 'admin' && (
           <AdminDashboard />
+        )}
+
+        {view === 'driver-register' && (
+          <DriverRegistrationPage 
+            onNavigateToPortal={() => handleNavigate('driver')}
+            onBackToLanding={() => handleNavigate('landing')}
+          />
         )}
 
         {view === 'feedback' && (

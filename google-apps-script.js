@@ -45,8 +45,8 @@ function doPost(e) {
       return handleUpdatePayment(data);
     } else if (action === "driver_login") {
       return handleDriverLogin(data);
-    } else if (action === "driver_register") {
-      return handleDriverRegister(data);
+    } else if (action === "driver_register" || action === "register_driver") {
+      return handleRegisterDriver(data);
     } else if (action === "admin_approve_driver") {
       return handleAdminApproveDriver(data);
     } else if (action === "feedback_submitted") {
@@ -336,30 +336,83 @@ function handleDriverLogin(data) {
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
-// Handle driver registration
-function handleDriverRegister(data) {
+// Handle driver registration with Google Drive folder and photos
+function handleRegisterDriver(data) {
   var spreadsheet = getTargetSpreadsheet(data);
-  var sheet = spreadsheet ? (spreadsheet.getSheetByName("צי רכב") || spreadsheet.getSheetByName("נהגים")) : null;
+  var sheet = spreadsheet ? (spreadsheet.getSheetByName("מאגר נהגים") || spreadsheet.getSheetByName("צי רכב") || spreadsheet.getSheetByName("נהגים")) : null;
   if (!sheet && spreadsheet) {
-    sheet = spreadsheet.insertSheet("צי רכב");
-    sheet.appendRow(["מזהה", "שם מלא", "טלפון", "דגם משאית", "מספר רישוי", "סטטוס", "דירוג", "תאריך הצטרפות"]);
+    sheet = spreadsheet.insertSheet("מאגר נהגים");
+    sheet.appendRow([
+      "מזהה", "שם מלא", "טלפון WhatsApp", "אימייל", "סוג כלי רכב וציוד", 
+      "מספר רישוי", "כושר העמסה", "אזור פעילות", "תוקף טסט", "תוקף ביטוח", 
+      "סטטוס", "דירוג", "תיקיית דרייב", "תמונת פרופיל", "תמונת משאית", "תאריך הצטרפות"
+    ]);
   }
+  
+  var folderId = "1_9vxDiPP51-GtUEeqsojmp5d1z7D8UoG";
+  var folderUrl = "";
+  var profilePhotoUrl = "";
+  var truckPhotoUrl = "";
+  var driverName = data.fullName || data.name || "ללא שם";
+  var driverPhone = data.phone || data.whatsappPhone || "";
+  
+  try {
+    var parentFolder = DriveApp.getFolderById(folderId);
+    var cleanPhoneForFolder = String(driverPhone).replace(/\D/g, "");
+    var driverFolderName = "Driver_" + driverName.replace(/\s+/g, '_') + "_" + cleanPhoneForFolder;
+    var driverFolder = parentFolder.createFolder(driverFolderName);
+    folderUrl = driverFolder.getUrl();
+    
+    // Save profile photo if provided
+    if (data.profilePhoto && data.profilePhoto.indexOf(",") > -1) {
+      var pContentType = data.profilePhoto.split(",")[0].split(":")[1].split(";")[0];
+      var pRaw = data.profilePhoto.split(",")[1];
+      var pBlob = Utilities.newBlob(Utilities.base64Decode(pRaw), pContentType, "תמונת_פרופיל_" + driverName);
+      var pFile = driverFolder.createFile(pBlob);
+      pFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      profilePhotoUrl = pFile.getUrl();
+    }
+    
+    // Save truck photo if provided
+    if (data.truckPhoto && data.truckPhoto.indexOf(",") > -1) {
+      var tContentType = data.truckPhoto.split(",")[0].split(":")[1].split(";")[0];
+      var tRaw = data.truckPhoto.split(",")[1];
+      var tBlob = Utilities.newBlob(Utilities.base64Decode(tRaw), tContentType, "תמונת_משאית_" + driverName);
+      var tFile = driverFolder.createFile(tBlob);
+      tFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      truckPhotoUrl = tFile.getUrl();
+    }
+  } catch (driveErr) {
+    Logger.log("Drive folder creation failed: " + driveErr.toString());
+    folderUrl = "שגיאה ב-Drive: " + driveErr.toString();
+  }
+  
+  var newId = "drv_" + new Date().getTime().toString().substr(-6);
   if (sheet) {
-    var newId = "drv_" + new Date().getTime().toString().substr(-6);
     sheet.appendRow([
       newId,
-      data.name || "",
-      "'" + (data.phone || ""),
-      data.truckModel || "משאית הובלות",
-      "טרם הוגדר",
+      driverName,
+      "'" + driverPhone,
+      data.email || "",
+      data.truckType || data.truckModel || "משאית הובלות",
+      data.truckPlate || "טרם הוגדר",
+      data.maxWeight || "",
+      data.region || "פריסה ארצית",
+      data.testExpiryDate || "",
+      data.insuranceExpiryDate || "",
       "active",
       "5.0",
+      folderUrl,
+      profilePhotoUrl,
+      truckPhotoUrl,
       new Date()
     ]);
   }
   return ContentService.createTextOutput(JSON.stringify({
     status: "success",
-    message: "הפרטים נרשמו בהצלחה בלשונית צי רכב בגיליון!"
+    message: "הנהג נרשם בהצלחה בגיליון וב-Drive!",
+    driverId: newId,
+    folderUrl: folderUrl
   })).setMimeType(ContentService.MimeType.JSON);
 }
 

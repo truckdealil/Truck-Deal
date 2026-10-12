@@ -16,9 +16,10 @@ const teamImg = '/src/assets/images/professional_moving_team_1784514402333.jpg';
 
 interface CrmLandingPageProps {
   onNavigateToQuote: () => void;
+  onNavigateToDriverRegister?: () => void;
 }
 
-export default function CrmLandingPage({ onNavigateToQuote }: CrmLandingPageProps) {
+export default function CrmLandingPage({ onNavigateToQuote, onNavigateToDriverRegister }: CrmLandingPageProps) {
   // Hero Carousel State
   const [currentSlide, setCurrentSlide] = useState(0);
   const slides = [
@@ -375,6 +376,14 @@ export default function CrmLandingPage({ onNavigateToQuote }: CrmLandingPageProp
               <Truck className="w-5 h-5" />
               <span>מחשבון ומכרז הובלה חכם</span>
             </button>
+            {onNavigateToDriverRegister && (
+              <button
+                onClick={onNavigateToDriverRegister}
+                className="px-6 py-4 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 hover:text-white font-bold rounded-xl transition-all duration-300 flex items-center justify-center gap-2 text-lg cursor-pointer shadow-md"
+              >
+                <span>רישום נהגים ומנופים 🚜</span>
+              </button>
+            )}
             <a
               href="#leads-join-section"
               className="px-8 py-4 bg-[#0a192f]/90 hover:bg-[#122846] border border-gray-700 hover:border-[#ff7f00] text-gray-200 hover:text-white font-bold rounded-xl transition-all duration-300 flex items-center justify-center gap-2 text-lg"

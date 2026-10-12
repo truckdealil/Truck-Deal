@@ -104,6 +104,44 @@ export interface CRMLead {
   createdAt: string;
 }
 
+export interface DriverProfile {
+  id?: string;
+  fullName: string;
+  phone: string;
+  email?: string;
+  truckType: string;
+  truckPlate: string;
+  maxWeight?: string;
+  region: string;
+  testExpiryDate?: string;
+  insuranceExpiryDate?: string;
+  profilePhoto?: string;
+  truckPhoto?: string;
+  rating?: number;
+  completedMoves?: number;
+  status?: 'active' | 'pending' | 'inactive';
+  createdAt?: string;
+}
+
+export const DRIVER_VEHICLE_OPTIONS = [
+  'משאית 12 טון + מנוף קבוע',
+  'משאית מנוף כבד 30–575 טון (עוז משא)',
+  'איסוזו פלטה פתוחה 5.5 טון',
+  'משאית סגורה 7.5 טון + רמפה הידראולית',
+  'מסחרית גדולה 3.5 טון (ספרינטר / קרפטר)',
+  'טריילר פלטה מרכז / פול-טריילר'
+] as const;
+
+export const DRIVER_REGION_OPTIONS = [
+  'מרכז והשרון',
+  'גוש דן',
+  'שפלה',
+  'צפון וחיפה',
+  'ירושלים',
+  'דרום',
+  'פריסה ארצית'
+] as const;
+
 // Available catalog items for the smart quote form
 export const CATALOG_ITEMS: Omit<InventoryItem, 'quantity'>[] = [
   // Furniture

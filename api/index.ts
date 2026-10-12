@@ -1546,43 +1546,72 @@ app.post('/api/drivers/login', (req, res) => {
 // POST Driver Registration
 app.post('/api/drivers/register', (req, res) => {
   try {
-    const { phone, name, truckModel, region } = req.body;
+    const { 
+      phone, name, fullName, truckModel, truckType, region, 
+      email, truckPlate, maxWeight, testExpiryDate, insuranceExpiryDate,
+      profilePhoto, truckPhoto 
+    } = req.body;
+    const driverName = fullName || name;
     const cleanPhone = String(phone || '').replace(/\D/g, '');
-    if (!cleanPhone || !name) {
+    if (!cleanPhone || !driverName) {
       return res.status(400).json({ error: 'שם ומספר טלפון הם שדות חובה' });
     }
 
     const drivers = readDatabase<any>(DRIVERS_FILE, []);
-    const existing = drivers.find((d: any) => String(d.phone || '').replace(/\D/g, '') === cleanPhone);
+    const existingIndex = drivers.findIndex((d: any) => String(d.phone || '').replace(/\D/g, '') === cleanPhone);
 
-    if (existing) {
-      return res.json({ status: 'success', message: 'הנהג כבר קיים במערכת', driver: existing });
-    }
-
-    const newDriver = {
-      id: 'driver_' + Math.random().toString(36).substr(2, 9),
-      fullName: name,
+    const driverPayload = {
+      fullName: driverName,
       phone: phone,
-      region: region || 'ארצי',
-      truckType: truckModel || 'משאית הובלות',
-      truckPlate: 'טרם הוגדר',
+      email: email || '',
+      region: region || 'מרכז והשרון',
+      truckType: truckType || truckModel || 'משאית הובלות',
+      truckPlate: truckPlate || 'טרם הוגדר',
+      maxWeight: maxWeight || '',
+      testExpiryDate: testExpiryDate || '',
+      insuranceExpiryDate: insuranceExpiryDate || '',
+      profilePhoto: profilePhoto || '',
+      truckPhoto: truckPhoto || '',
       rating: 5.0,
       completedMoves: 0,
-      status: 'active'
+      status: 'active',
+      updatedAt: new Date().toISOString()
     };
 
-    drivers.push(newDriver);
+    let savedDriver: any;
+    if (existingIndex !== -1) {
+      drivers[existingIndex] = { ...drivers[existingIndex], ...driverPayload };
+      savedDriver = drivers[existingIndex];
+    } else {
+      savedDriver = {
+        id: 'driver_' + Math.random().toString(36).substr(2, 9),
+        ...driverPayload,
+        createdAt: new Date().toISOString()
+      };
+      drivers.push(savedDriver);
+    }
+
     writeDatabase(DRIVERS_FILE, drivers);
 
     // Forward to Google Apps Script asynchronously
     sendToGoogleAppsScript({
-      action: 'driver_register',
-      name,
+      action: 'register_driver',
+      fullName: driverName,
+      name: driverName,
       phone,
-      truckModel
+      whatsappPhone: phone,
+      email,
+      truckType: driverPayload.truckType,
+      truckPlate: driverPayload.truckPlate,
+      maxWeight,
+      region: driverPayload.region,
+      testExpiryDate,
+      insuranceExpiryDate,
+      profilePhoto,
+      truckPhoto
     });
 
-    res.json({ status: 'success', message: 'נרשמת בהצלחה למאגר הנהגים!', driver: newDriver });
+    res.json({ status: 'success', message: 'נרשמת בהצלחה למאגר הנהגים!', driver: savedDriver, drivers });
   } catch (error) {
     console.error('Driver register error:', error);
     res.status(500).json({ error: 'שגיאה ברישום נהג' });
@@ -1594,36 +1623,69 @@ app.post('/api/drivers', (req, res) => {
   try {
     const drivers = readDatabase<any>(DRIVERS_FILE, []);
     const driverData = req.body;
+    const driverName = driverData.fullName || driverData.name;
+    const phone = driverData.phone || driverData.whatsappPhone;
 
-    if (!driverData.fullName || !driverData.phone) {
+    if (!driverName || !phone) {
       return res.status(400).json({ error: 'שם מלא וטלפון הם שדות חובה' });
     }
 
+    let savedDriver: any;
     if (driverData.id) {
       // Update existing driver
       const idx = drivers.findIndex((d) => d.id === driverData.id);
       if (idx !== -1) {
-        drivers[idx] = { ...drivers[idx], ...driverData };
+        drivers[idx] = { ...drivers[idx], ...driverData, fullName: driverName, phone };
+        savedDriver = drivers[idx];
       } else {
-        drivers.push(driverData);
+        savedDriver = { ...driverData, fullName: driverName, phone };
+        drivers.push(savedDriver);
       }
     } else {
-      // Create new driver
-      const newDriver = {
-        id: 'driver_' + Math.random().toString(36).substr(2, 9),
-        fullName: driverData.fullName,
-        phone: driverData.phone,
-        region: driverData.region || 'ארצי',
-        truckType: driverData.truckType || 'משאית כללית',
-        rating: 5.0,
-        completedMoves: 0,
-        status: 'active'
-      };
-      drivers.push(newDriver);
+      // Check if driver with same phone already exists
+      const cleanPhone = String(phone).replace(/\D/g, '');
+      const existingIdx = drivers.findIndex((d) => String(d.phone || '').replace(/\D/g, '') === cleanPhone);
+
+      if (existingIdx !== -1) {
+        drivers[existingIdx] = { ...drivers[existingIdx], ...driverData, fullName: driverName, phone };
+        savedDriver = drivers[existingIdx];
+      } else {
+        // Create new driver
+        savedDriver = {
+          id: 'driver_' + Math.random().toString(36).substr(2, 9),
+          rating: 5.0,
+          completedMoves: 0,
+          status: 'active',
+          createdAt: new Date().toISOString(),
+          ...driverData,
+          fullName: driverName,
+          phone
+        };
+        drivers.push(savedDriver);
+      }
     }
 
     writeDatabase(DRIVERS_FILE, drivers);
-    res.json({ success: true, drivers });
+
+    // Forward to Google Apps Script asynchronously
+    sendToGoogleAppsScript({
+      action: 'register_driver',
+      fullName: driverName,
+      name: driverName,
+      phone,
+      whatsappPhone: phone,
+      email: driverData.email || '',
+      truckType: driverData.truckType || driverData.truckModel || 'משאית כללית',
+      truckPlate: driverData.truckPlate || 'טרם הוגדר',
+      maxWeight: driverData.maxWeight || '',
+      region: driverData.region || 'מרכז והשרון',
+      testExpiryDate: driverData.testExpiryDate || '',
+      insuranceExpiryDate: driverData.insuranceExpiryDate || '',
+      profilePhoto: driverData.profilePhoto || '',
+      truckPhoto: driverData.truckPhoto || ''
+    });
+
+    res.json({ success: true, status: 'success', driver: savedDriver, drivers });
   } catch (error) {
     console.error('Error saving driver:', error);
     res.status(500).json({ error: 'שגיאה בשמירת פרטי הנהג' });

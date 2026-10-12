@@ -11,7 +11,7 @@ interface ChatMessage {
 }
 
 interface AIConciergeProps {
-  onNavigate?: (view: 'landing' | 'quote' | 'driver' | 'admin' | 'tracking' | 'feedback', moveId: string | null) => void;
+  onNavigate?: (view: 'landing' | 'quote' | 'driver' | 'admin' | 'tracking' | 'feedback' | 'driver-register', moveId: string | null) => void;
 }
 
 export default function AIConcierge({ onNavigate }: AIConciergeProps) {

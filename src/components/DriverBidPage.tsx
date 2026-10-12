@@ -13,9 +13,10 @@ import MoveCountdownTimer from './MoveCountdownTimer';
 interface DriverBidPageProps {
   initialMoveId: string | null;
   onBidSubmitted: () => void;
+  onNavigateToRegister?: () => void;
 }
 
-export default function DriverBidPage({ initialMoveId, onBidSubmitted }: DriverBidPageProps) {
+export default function DriverBidPage({ initialMoveId, onBidSubmitted, onNavigateToRegister }: DriverBidPageProps) {
   const [moveId, setMoveId] = useState<string | null>(initialMoveId);
   const [move, setMove] = useState<MoveRequest | null>(null);
   const [loading, setLoading] = useState(false);
@@ -232,6 +233,23 @@ export default function DriverBidPage({ initialMoveId, onBidSubmitted }: DriverB
             {authenticating ? 'מאמת מול הגיליון...' : 'אימות כניסה למכרז 🔓'}
           </button>
         </form>
+
+        <div className="pt-2 border-t border-navy-800 text-center">
+          <p className="text-xs text-gray-400 mb-2">נהג או מנופאי חדש?</p>
+          <button
+            type="button"
+            onClick={() => {
+              if (onNavigateToRegister) {
+                onNavigateToRegister();
+              } else {
+                window.location.search = '?view=driver-register';
+              }
+            }}
+            className="w-full py-2.5 px-3 bg-navy-950 hover:bg-navy-800 border border-emerald-500/40 text-emerald-400 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            <span>הרשם עכשיו למאגר הנהגים והמנופים 🚜</span>
+          </button>
+        </div>
       </div>
     );
   }
