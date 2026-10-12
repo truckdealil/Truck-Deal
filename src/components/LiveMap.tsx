@@ -113,16 +113,18 @@ const loadLeafletCSSAndJS = (): Promise<void> => {
 interface LiveMapProps {
   moves: MoveRequest[];
   onSelectMove: (move: MoveRequest) => void;
+  drivers?: any[];
 }
 
-export default function LiveMap({ moves, onSelectMove }: LiveMapProps) {
+export default function LiveMap({ moves, onSelectMove, drivers = [] }: LiveMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markersGroupRef = useRef<any>(null);
   const polylinesGroupRef = useRef<any>(null);
+  const driversGroupRef = useRef<any>(null);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const [mapTheme, setMapTheme] = useState<'dark' | 'light'>('dark');
-  const [selectedRouteFilter, setSelectedRouteFilter] = useState<'all' | 'transit' | 'bidding' | 'completed'>('all');
+  const [selectedRouteFilter, setSelectedRouteFilter] = useState<'all' | 'transit' | 'bidding' | 'completed' | 'online_drivers'>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
   // Filtering active moves
@@ -173,6 +175,7 @@ export default function LiveMap({ moves, onSelectMove }: LiveMapProps) {
       // Layer groups for clean additions and removals
       markersGroupRef.current = L.layerGroup().addTo(mapRef.current);
       polylinesGroupRef.current = L.layerGroup().addTo(mapRef.current);
+      driversGroupRef.current = L.layerGroup().addTo(mapRef.current);
     }
 
     const map = mapRef.current;
@@ -203,18 +206,17 @@ export default function LiveMap({ moves, onSelectMove }: LiveMapProps) {
     };
   }, [leafletLoaded, mapTheme]);
 
-  // Redraw markers and routes when moves change
+  // Redraw markers and routes when moves or drivers change
   useEffect(() => {
     if (!leafletLoaded || !mapRef.current) return;
 
     const L = window.L;
     const map = mapRef.current;
 
-    // Clear old markers and paths
-    markersGroupRef.current.clearLayers();
-    polylinesGroupRef.current.clearLayers();
-
-    if (filteredMoves.length === 0) return;
+    // Clear old markers, paths, and drivers
+    if (markersGroupRef.current) markersGroupRef.current.clearLayers();
+    if (polylinesGroupRef.current) polylinesGroupRef.current.clearLayers();
+    if (driversGroupRef.current) driversGroupRef.current.clearLayers();
 
     const bounds = L.latLngBounds();
 
@@ -326,8 +328,20 @@ export default function LiveMap({ moves, onSelectMove }: LiveMapProps) {
       const driverName = approvedBid ? approvedBid.driverName : 'טרם נקבע נהג';
       const bidAmount = approvedBid ? `₪${approvedBid.bidAmount}` : 'ממתין להצעות';
 
+      // Personalized WhatsApp dispatch message (Section 3ג)
+      const targetDriverName = driverName !== 'טרם נקבע נהג' ? driverName : 'מוביל יקר';
+      const truckTypeStr = move.assignedTruckModel || (move.craneNeeded === 'yes' ? 'מנוף סולם / משאית מנוף' : 'משאית סגורה 7.5–12 טון עם רמפה');
+      const netDriverPay = approvedBid ? approvedBid.bidAmount : 1850;
+      const cargoSummary = move.items && move.items.length > 0 ? move.items.map(i => `${i.name} (${i.quantity})`).join(', ') : 'תכולת הובלה מלאה';
+      const waMessage = `שלום ${targetDriverName}, נכנסה הרגע הובלה מותאמת בול לרכב ${truckTypeStr} ולציר הנסיעה שלך:
+📍 מסלול: ${move.originAddress} ➔ ${move.destAddress}
+📦 תכולה: ${cargoSummary}, קומה ${move.floor}
+💵 שכר נטו למוביל: ₪${netDriverPay}
+🔗 לצפייה והגשת הצעה ישירה: https://truck-deal.vercel.app/?view=driver&moveId=${move.id}`;
+      const encodedWaUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(waMessage)}`;
+
       const popupContent = `
-        <div class="p-3 bg-navy-950 text-white rounded-lg text-right font-sans min-w-[240px]" dir="rtl">
+        <div class="p-3 bg-navy-950 text-white rounded-lg text-right font-sans min-w-[250px]" dir="rtl">
           <div class="flex justify-between items-center pb-2 border-b border-navy-800 mb-2">
             <span class="text-[10px] bg-orange-electric/20 text-orange-electric font-black px-1.5 py-0.5 rounded">הובלה #${move.id.substring(0,6)}</span>
             <span class="text-xs font-bold text-gray-300 font-mono">${bidAmount}</span>
@@ -352,12 +366,21 @@ export default function LiveMap({ moves, onSelectMove }: LiveMapProps) {
             📍 סטטוס: ${statusHebrew} (${progressPct})
           </div>
 
-          <button 
-            onclick="window.dispatchMapEvent('${move.id}')"
-            class="w-full text-center py-1 bg-orange-electric hover:bg-orange-600 text-white font-bold rounded text-[10px] cursor-pointer transition-all flex items-center justify-center gap-1"
-          >
-            📊 פתח כרטיס הובלה ניהולי
-          </button>
+          <div class="space-y-1.5">
+            <button 
+              onclick="window.dispatchMapEvent('${move.id}')"
+              class="w-full text-center py-1.5 bg-orange-electric hover:bg-orange-600 text-white font-bold rounded text-[10px] cursor-pointer transition-all flex items-center justify-center gap-1"
+            >
+              📊 פתח כרטיס הובלה ניהולי
+            </button>
+            <a 
+              href="${encodedWaUrl}" 
+              target="_blank" 
+              class="w-full text-center py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10px] cursor-pointer transition-all flex items-center justify-center gap-1 text-decoration-none block"
+            >
+              📲 שיגור אישי ישיר ב-WhatsApp
+            </a>
+          </div>
         </div>
       `;
 
@@ -367,6 +390,78 @@ export default function LiveMap({ moves, onSelectMove }: LiveMapProps) {
       truckMarker.bindPopup(popupContent);
       polyline.bindPopup(popupContent);
     });
+
+    // 6. Draw Online Drivers (Priority radius 25 km & Backhauls)
+    if (selectedRouteFilter === 'all' || selectedRouteFilter === 'online_drivers') {
+      const onlineDrivers = (drivers || []).filter((d: any) => d.status === 'active' || !d.status);
+      onlineDrivers.forEach((driver: any) => {
+        const baseCity = driver.region || 'תל אביב';
+        const baseCoords = getCityCoords(baseCity);
+        const driverCoords = getOffsetCoords('drv_' + (driver.id || driver.phone), baseCoords);
+        bounds.extend(driverCoords);
+
+        const driverHtml = `
+          <div class="relative flex items-center justify-center cursor-pointer">
+            <div class="absolute w-8 h-8 bg-emerald-400/30 border border-emerald-400 rounded-full animate-ping"></div>
+            <div class="w-7 h-7 rounded-full bg-emerald-500 border-2 border-white shadow-xl flex items-center justify-center text-white text-xs z-10 font-bold">
+              🚚
+            </div>
+          </div>
+        `;
+        const driverIcon = L.divIcon({
+          html: driverHtml,
+          className: 'custom-driver-icon',
+          iconSize: [32, 32],
+          iconAnchor: [16, 16]
+        });
+
+        // Generate personalized direct WhatsApp dispatch for this specific driver
+        const targetMove = moves.find(m => m.status === 'bidding') || moves[0];
+        let directDispatchBtn = '';
+        if (targetMove) {
+          const directMsg = `שלום ${driver.fullName || 'מוביל'}, נכנסה הרגע הובלה מותאמת בול לרכב ${driver.truckType || 'משאית הובלות'} ולציר הנסיעה שלך:
+📍 מסלול: ${targetMove.originAddress} ➔ ${targetMove.destAddress}
+📦 תכולה: ${targetMove.items && targetMove.items.length > 0 ? targetMove.items.map(i => `${i.name} (${i.quantity})`).join(', ') : 'תכולת דירה מלאה'}, קומה ${targetMove.floor}
+💵 שכר נטו למוביל: ₪1,850
+🔗 לצפייה והגשת הצעה ישירה: https://truck-deal.vercel.app/?view=driver&moveId=${targetMove.id}`;
+          const directWaUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(directMsg)}`;
+          directDispatchBtn = `
+            <a 
+              href="${directWaUrl}" 
+              target="_blank" 
+              class="w-full text-center py-1.5 mt-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10px] cursor-pointer transition-all flex items-center justify-center gap-1 block"
+              style="text-decoration: none;"
+            >
+              📲 שיגור הובלה מותאמת ב-WhatsApp
+            </a>
+          `;
+        }
+
+        const driverPopup = `
+          <div class="p-3 bg-navy-950 text-white rounded-lg text-right font-sans min-w-[240px]" dir="rtl">
+            <div class="flex justify-between items-center pb-1.5 border-b border-navy-800 mb-2">
+              <span class="text-[10px] bg-emerald-500/20 text-emerald-400 font-extrabold px-1.5 py-0.5 rounded flex items-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                נהג Online 🟢
+              </span>
+              <span class="text-xs font-bold text-amber-400">★ ${driver.rating || '5.0'}</span>
+            </div>
+            <h4 class="font-bold text-sm text-white mb-0.5">${driver.fullName || 'נהג מורשה'}</h4>
+            <p class="text-[10px] text-gray-400 mb-1">📞 טלפון: ${driver.phone || 'ממתין לעדכון'}</p>
+            <div class="p-2 bg-navy-900 rounded border border-navy-800 text-[10px] space-y-1 mb-2">
+              <p class="text-orange-electric font-semibold">🚛 כלי רכב: ${driver.truckType || 'משאית הובלות'}</p>
+              <p class="text-gray-300">📍 אזור פעילות: ${driver.region || 'מרכז והשרון'}</p>
+              <p class="text-emerald-400 font-bold">🎯 קדימות ברדיוס 25 ק"מ ממיקום GPS</p>
+            </div>
+            ${directDispatchBtn}
+          </div>
+        `;
+
+        L.marker(driverCoords, { icon: driverIcon })
+          .bindPopup(driverPopup)
+          .addTo(driversGroupRef.current);
+      });
+    }
 
     // Expose click routing callback safely to HTML popup
     (window as any).dispatchMapEvent = (moveId: string) => {
@@ -382,7 +477,7 @@ export default function LiveMap({ moves, onSelectMove }: LiveMapProps) {
     } catch (e) {
       // Swallowed in case bounds are empty
     }
-  }, [filteredMoves, leafletLoaded, moves, onSelectMove]);
+  }, [filteredMoves, leafletLoaded, moves, drivers, onSelectMove, selectedRouteFilter]);
 
   // Center map on a specific move clicked from the sidebar
   const flyToMove = (move: MoveRequest) => {

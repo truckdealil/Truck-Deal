@@ -47,7 +47,7 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
             {
               id: 'init_1',
               sender: 'ai',
-              text: 'שלום! אני <b>Truk AI Dispatcher & Security Controller</b> — מנוע התפעול, התמחור ואבטחת המידע הראשי של פלטפורמת "טראק דיל il" (גרסה 3.0 Production Ready). כיצד אוכל לסייע לך באפיון לוגיסטי, התאמת צי רכב (כולל מחירון מנופי עוז משא בע"מ) ותמחור שקוף ומאובטח כעת?<br/><br/>🔲 בדיקת התאמת מנוף למיקום<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 תיאום קו חלוקה קבוע לעסק',
+              text: 'שלום! אני <b>Truk AI Dispatcher & Fleet Matchmaker</b> — המוח הלוגיסטי, מנוע התמחור, ומנהל השיבוץ הממוקד של פלטפורמת "טראק דיל il" (דומיין פעיל: https://truck-deal.vercel.app/).<br/><br/>כיצד אוכל לסייע לך באפיון הובלה, התאמת צי רכב ממוקד (מסחרית 3.5ט, משאית רמפה 7.5-12ט, מנוף סולם במה חיצונית, או מנוף זרוע כבד), ושידוך נסיעות חזור Backhaul בהנחה?<br/><br/>🔲 בדיקת נהגי Online זמינים על המפה<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 חישוב נסיעת חזור Backhaul (20% הנחה)',
               timestamp: new Date().toISOString()
             }
           ]);
