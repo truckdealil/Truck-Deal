@@ -9,6 +9,7 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
+const IS_VERCEL = Boolean(process.env.VERCEL);
 
 // Enable CORS for all incoming client and external requests
 app.use((req, res, next) => {
@@ -23,28 +24,30 @@ app.use((req, res, next) => {
 
 // Normalize incoming path for Vercel Serverless environment:
 // Handles cases where Vercel rewrites stripped /api or where headers contain the original route
-app.use((req, res, next) => {
-  const possiblePaths = [
-    req.headers['x-matched-path'] as string,
-    req.headers['x-invoke-path'] as string,
-    req.headers['x-forwarded-uri'] as string,
-    req.originalUrl
-  ];
-  const original = possiblePaths.find(p => p && typeof p === 'string' && p.startsWith('/api') && p !== '/api');
-  if (original && (req.url === '/api' || req.url === '/')) {
-    req.url = original;
-  } else if (
-    req.url &&
-    !req.url.startsWith('/api') &&
-    req.url !== '/' &&
-    !req.url.startsWith('/index.html') &&
-    !req.url.startsWith('/sw.js') &&
-    !req.url.startsWith('/manifest.json')
-  ) {
-    req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
-  }
-  next();
-});
+if (IS_VERCEL) {
+  app.use((req, res, next) => {
+    const possiblePaths = [
+      req.headers['x-matched-path'] as string,
+      req.headers['x-invoke-path'] as string,
+      req.headers['x-forwarded-uri'] as string,
+      req.originalUrl
+    ];
+    const original = possiblePaths.find(p => p && typeof p === 'string' && p.startsWith('/api') && p !== '/api');
+    if (original && (req.url === '/api' || req.url === '/')) {
+      req.url = original;
+    } else if (
+      req.url &&
+      !req.url.startsWith('/api') &&
+      req.url !== '/' &&
+      !req.url.startsWith('/index.html') &&
+      !req.url.startsWith('/sw.js') &&
+      !req.url.startsWith('/manifest.json')
+    ) {
+      req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
+    }
+    next();
+  });
+}
 
 // Explicit route for Service Worker to ensure exact javascript mime type
 app.get('/sw.js', (req, res) => {
@@ -82,7 +85,6 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Determine active database directory:
 // On Vercel Serverless, root filesystem is read-only except /tmp
-const IS_VERCEL = Boolean(process.env.VERCEL);
 const DATA_DIR = IS_VERCEL ? '/tmp' : path.join(process.cwd(), 'data');
 const SEED_DATA_DIR = path.join(process.cwd(), 'data');
 
