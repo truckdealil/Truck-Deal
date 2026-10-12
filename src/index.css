@@ -38,3 +38,126 @@ html, body {
   background: #e06f00;
 }
 
+/* ========================================================
+   LIGHT MODE STYLING (.light-mode)
+   Prestigious Clean Light Theme (#f8fafc & #ffffff)
+   ======================================================== */
+html.light-mode, 
+body.light-mode {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+.light-mode ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.light-mode .bg-navy-950,
+.light-mode .bg-navy-950\/90,
+.light-mode .bg-navy-950\/95,
+.light-mode .bg-navy-950\/80 {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+.light-mode .bg-navy-900,
+.light-mode .bg-navy-900\/90,
+.light-mode .bg-navy-900\/95,
+.light-mode .bg-navy-900\/98 {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+}
+
+.light-mode .bg-navy-850,
+.light-mode .bg-navy-800,
+.light-mode .bg-navy-750 {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+.light-mode .border-navy-950,
+.light-mode .border-navy-900,
+.light-mode .border-navy-850,
+.light-mode .border-navy-800,
+.light-mode .border-navy-750,
+.light-mode .border-navy-700 {
+  border-color: #e2e8f0 !important;
+}
+
+.light-mode .text-white {
+  color: #0f172a !important;
+}
+
+.light-mode .text-gray-100,
+.light-mode .text-gray-200 {
+  color: #1e293b !important;
+}
+
+.light-mode .text-gray-300,
+.light-mode .text-gray-400 {
+  color: #475569 !important;
+}
+
+.light-mode .text-gray-500,
+.light-mode .text-gray-600 {
+  color: #64748b !important;
+}
+
+/* Maintain brand orange vibrancy */
+.light-mode .text-orange-electric {
+  color: #ea580c !important;
+}
+.light-mode .bg-orange-electric {
+  background-color: #ea580c !important;
+  color: #ffffff !important;
+}
+
+/* ========================================================
+   ACCESSIBILITY IS 5568 AA STYLING CLASSES
+   ======================================================== */
+.a11y-high-contrast,
+.a11y-high-contrast body,
+.a11y-high-contrast div,
+.a11y-high-contrast header,
+.a11y-high-contrast main,
+.a11y-high-contrast footer,
+.a11y-high-contrast section,
+.a11y-high-contrast p,
+.a11y-high-contrast span {
+  background-color: #000000 !important;
+  color: #ffff00 !important;
+  border-color: #ffff00 !important;
+}
+
+.a11y-high-contrast button,
+.a11y-high-contrast a,
+.a11y-high-contrast input {
+  background-color: #1a1a1a !important;
+  color: #ffffff !important;
+  border: 2px solid #ffff00 !important;
+}
+
+.a11y-grayscale {
+  filter: grayscale(100%) !important;
+}
+
+.a11y-readable-font,
+.a11y-readable-font * {
+  font-family: Arial, Helvetica, sans-serif !important;
+  letter-spacing: 0.03em !important;
+}
+
+.a11y-highlight-links a,
+.a11y-highlight-links button {
+  text-decoration: underline !important;
+  text-decoration-thickness: 2px !important;
+  font-weight: 800 !important;
+}
+
+.a11y-stop-animations,
+.a11y-stop-animations * {
+  animation: none !important;
+  transition: none !important;
+}
+

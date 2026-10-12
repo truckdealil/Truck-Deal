@@ -6,7 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Truck, ShieldCheck, Clock, Users, ArrowLeftRight, 
-  Settings, Menu, X, Sparkles, MessageSquareHeart
+  Settings, Menu, X, Sparkles, MessageSquareHeart,
+  Sun, Moon, Lock, Info, Building2, KeyRound, AlertCircle
 } from 'lucide-react';
 import CrmLandingPage from './components/CrmLandingPage';
 import MoveForm from './components/MoveForm';
@@ -15,16 +16,55 @@ import AdminDashboard from './components/AdminDashboard';
 import ClientLiveTracking from './components/ClientLiveTracking';
 import ClientFeedbackPage from './components/ClientFeedbackPage';
 import DriverRegistrationPage from './components/DriverRegistrationPage';
+import AboutUsPage from './components/AboutUsPage';
+import AccessibilityWidget from './components/AccessibilityWidget';
+import LegalModals, { LegalModalType } from './components/LegalModals';
 import AIConcierge from './components/AIConcierge';
 import { MoveRequest } from './types';
 
 export default function App() {
-  const [view, setView] = useState<'landing' | 'quote' | 'driver' | 'admin' | 'tracking' | 'feedback' | 'driver-register'>('landing');
+  const [view, setView] = useState<'landing' | 'quote' | 'driver' | 'admin' | 'tracking' | 'feedback' | 'driver-register' | 'about'>('landing');
   const [selectedMoveId, setSelectedMoveId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // Theme mode: dark / light
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('truck_theme') as 'dark' | 'light') || 'dark';
+  });
+
+  // Admin PIN Protection Modal
+  const [adminModalOpen, setAdminModalOpen] = useState(false);
+  const [adminPinInput, setAdminPinInput] = useState('');
+  const [adminPinError, setAdminPinError] = useState(false);
+
+  // Legal Modals state
+  const [legalModal, setLegalModal] = useState<LegalModalType>(null);
+
   const isAdminLoggedIn = localStorage.getItem('truckdeal_admin_auth') === 'true';
   const isDriverLoggedIn = !!localStorage.getItem('truk_active_driver_session');
+
+  // Apply Theme effect
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'light') {
+      root.classList.add('light-mode');
+    } else {
+      root.classList.remove('light-mode');
+    }
+    localStorage.setItem('truck_theme', theme);
+  }, [theme]);
+
+  // Keyboard shortcut Ctrl + Shift + A for secret Admin access
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a' || e.key === 'ש')) {
+        e.preventDefault();
+        setAdminModalOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -41,15 +81,28 @@ export default function App() {
       setView('feedback');
       setSelectedMoveId(moveIdParam);
     } else if (viewParam === 'admin') {
-      setView('admin');
+      // Direct URL check: if not logged in, show PIN prompt
+      if (localStorage.getItem('truckdeal_admin_auth') === 'true') {
+        setView('admin');
+      } else {
+        setAdminModalOpen(true);
+        setView('landing');
+      }
     } else if (viewParam === 'quote') {
       setView('quote');
     } else if (viewParam === 'driver-register') {
       setView('driver-register');
+    } else if (viewParam === 'about') {
+      setView('about');
     }
   }, []);
 
-  const handleNavigate = (targetView: 'landing' | 'quote' | 'driver' | 'admin' | 'tracking' | 'feedback' | 'driver-register', moveId: string | null = null) => {
+  const handleNavigate = (targetView: 'landing' | 'quote' | 'driver' | 'admin' | 'tracking' | 'feedback' | 'driver-register' | 'about', moveId: string | null = null) => {
+    if (targetView === 'admin' && !isAdminLoggedIn) {
+      setAdminModalOpen(true);
+      return;
+    }
+
     setView(targetView);
     setSelectedMoveId(moveId);
     setMobileMenuOpen(false);
@@ -73,6 +126,9 @@ export default function App() {
     } else if (targetView === 'quote') {
       newUrl.searchParams.set('view', 'quote');
       newUrl.searchParams.delete('moveId');
+    } else if (targetView === 'about') {
+      newUrl.searchParams.set('view', 'about');
+      newUrl.searchParams.delete('moveId');
     } else {
       newUrl.searchParams.delete('view');
       newUrl.searchParams.delete('moveId');
@@ -80,8 +136,22 @@ export default function App() {
     window.history.pushState({}, '', newUrl.toString());
   };
 
+  const handleAdminPinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanPin = adminPinInput.trim();
+    if (cleanPin === '1983' || cleanPin === '2026' || cleanPin === 'TrukDeal2026!') {
+      localStorage.setItem('truckdeal_admin_auth', 'true');
+      setAdminPinError(false);
+      setAdminModalOpen(false);
+      setAdminPinInput('');
+      handleNavigate('admin');
+    } else {
+      setAdminPinError(true);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-navy-950 flex flex-col font-sans" dir="rtl">
+    <div className="min-h-screen bg-navy-950 flex flex-col font-sans transition-colors duration-200" dir="rtl">
       {/* Top Main Navigation Bar */}
       <header className="sticky top-0 z-50 bg-navy-950/90 backdrop-blur-md border-b border-navy-900/80 px-4 py-3 shadow-md">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
@@ -113,26 +183,36 @@ export default function App() {
           <nav className="hidden md:flex items-center gap-1.5 bg-navy-900 p-1 rounded-xl border border-navy-800">
             <button
               onClick={() => handleNavigate('landing')}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+              className={`px-3.5 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
                 view === 'landing' ? 'bg-orange-electric text-white font-bold shadow-md' : 'text-gray-400 hover:text-white'
               }`}
             >
-              דף נחיתה ולידים
+              דף נחיתה
+            </button>
+
+            <button
+              onClick={() => handleNavigate('about')}
+              className={`px-3.5 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                view === 'about' ? 'bg-orange-electric text-white font-bold shadow-md' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <Building2 className="w-4 h-4" />
+              <span>אודות החברה</span>
             </button>
 
             <button
               onClick={() => handleNavigate('quote')}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 view === 'quote' ? 'bg-orange-electric text-white font-bold shadow-md' : 'text-gray-400 hover:text-white'
               }`}
             >
               <Sparkles className="w-4 h-4 animate-pulse" />
-              <span>מכרז ומחשבון הובלה</span>
+              <span>מכרז ומחשבון</span>
             </button>
 
             <button
               onClick={() => handleNavigate('driver', selectedMoveId)}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 view === 'driver' ? 'bg-orange-electric text-white font-bold shadow-md' : 'text-gray-400 hover:text-white'
               }`}
             >
@@ -141,22 +221,21 @@ export default function App() {
               {isDriverLoggedIn && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />}
             </button>
 
-            <button
-              onClick={() => handleNavigate('driver-register')}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                view === 'driver-register' 
-                  ? 'bg-orange-electric text-white font-bold shadow-md' 
-                  : 'text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/10'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>הרשמת נהגים ומנופים 🚜</span>
-            </button>
+            {/* Smart Deduplication: Hide Driver Registration Button when already on driver-register page */}
+            {view !== 'driver-register' && (
+              <button
+                onClick={() => handleNavigate('driver-register')}
+                className="px-3.5 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/10"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>הרשמת נהגים 🚜</span>
+              </button>
+            )}
 
             {selectedMoveId && (
               <button
                 onClick={() => handleNavigate('tracking', selectedMoveId)}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3.5 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                   view === 'tracking' ? 'bg-orange-electric text-white font-bold shadow-md' : 'text-orange-electric/90 border border-orange-electric/30 hover:bg-orange-electric/10'
                 }`}
               >
@@ -164,27 +243,40 @@ export default function App() {
                 <span>מעקב לקוח חי</span>
               </button>
             )}
-
-            <button
-              onClick={() => handleNavigate('admin')}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                view === 'admin' ? 'bg-orange-electric text-white font-bold shadow-md' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>מערכת ניהול (Admin)</span>
-              {isAdminLoggedIn && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />}
-            </button>
           </nav>
 
-          {/* Mobile Menu Button */}
-          <div className="md:hidden">
+          {/* Left Actions: Day/Night Mode Switch & Mobile Menu Toggle */}
+          <div className="flex items-center gap-2">
+            {/* Light / Dark Mode Toggle */}
             <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 bg-navy-900 border border-navy-800 rounded-lg text-gray-400 hover:text-white cursor-pointer"
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className="px-3 py-1.5 rounded-xl border border-navy-800 bg-navy-900 hover:bg-navy-850 text-gray-300 hover:text-white flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer shadow-sm select-none"
+              title={theme === 'dark' ? 'מעבר למצב יום (Light Mode)' : 'מעבר למצב לילה (Dark Mode)'}
+              aria-label="החלף מצב תצוגה"
             >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {theme === 'dark' ? (
+                <>
+                  <Sun className="w-4 h-4 text-amber-400" />
+                  <span className="hidden sm:inline">מצב יום</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-4 h-4 text-blue-400" />
+                  <span className="hidden sm:inline">מצב לילה</span>
+                </>
+              )}
             </button>
+
+            {/* Mobile Menu Button */}
+            <div className="md:hidden">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="p-2 bg-navy-900 border border-navy-800 rounded-lg text-gray-400 hover:text-white cursor-pointer"
+                aria-label="פתח תפריט"
+              >
+                {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -200,6 +292,16 @@ export default function App() {
           >
             דף נחיתה ולידים
           </button>
+
+          <button
+            onClick={() => handleNavigate('about')}
+            className={`w-full py-2.5 px-4 rounded-xl text-right font-bold block ${
+              view === 'about' ? 'bg-orange-electric text-white' : 'text-gray-300'
+            }`}
+          >
+            אודות החברה והצי 🏢
+          </button>
+
           <button
             onClick={() => handleNavigate('quote')}
             className={`w-full py-2.5 px-4 rounded-xl text-right font-bold block ${
@@ -208,6 +310,7 @@ export default function App() {
           >
             מכרז ומחשבון הובלה
           </button>
+
           <button
             onClick={() => handleNavigate('driver', selectedMoveId)}
             className={`w-full py-2.5 px-4 rounded-xl text-right font-bold block ${
@@ -216,16 +319,17 @@ export default function App() {
           >
             פורטל נהגים
           </button>
-          <button
-            onClick={() => handleNavigate('driver-register')}
-            className={`w-full py-2.5 px-4 rounded-xl text-right font-bold block ${
-              view === 'driver-register' 
-                ? 'bg-orange-electric text-white' 
-                : 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'
-            }`}
-          >
-            🚜 הרשמת נהגים ומנופים
-          </button>
+
+          {/* Hide on registration page to prevent button duplication */}
+          {view !== 'driver-register' && (
+            <button
+              onClick={() => handleNavigate('driver-register')}
+              className="w-full py-2.5 px-4 rounded-xl text-right font-bold block text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+            >
+              🚜 הרשמת נהגים ומנופים
+            </button>
+          )}
+
           {selectedMoveId && (
             <button
               onClick={() => handleNavigate('tracking', selectedMoveId)}
@@ -236,14 +340,6 @@ export default function App() {
               מעקב לקוח חי 📱
             </button>
           )}
-          <button
-            onClick={() => handleNavigate('admin')}
-            className={`w-full py-2.5 px-4 rounded-xl text-right font-bold block ${
-              view === 'admin' ? 'bg-orange-electric text-white' : 'text-gray-300'
-            }`}
-          >
-            מערכת ניהול (Admin)
-          </button>
         </div>
       )}
 
@@ -252,6 +348,13 @@ export default function App() {
         {view === 'landing' && (
           <CrmLandingPage 
             onNavigateToQuote={() => handleNavigate('quote')} 
+            onNavigateToDriverRegister={() => handleNavigate('driver-register')}
+          />
+        )}
+
+        {view === 'about' && (
+          <AboutUsPage 
+            onNavigateToQuote={() => handleNavigate('quote')}
             onNavigateToDriverRegister={() => handleNavigate('driver-register')}
           />
         )}
@@ -309,10 +412,119 @@ export default function App() {
         )}
       </main>
 
-      <footer className="bg-navy-950 border-t border-navy-900 py-6 text-center text-xs text-gray-600">
-        <p>© {new Date().getFullYear()} טראק דיל il (Truk Dealil IL). כל הזכויות שמורות.</p>
+      {/* Footer with Legal Links & Discrete Admin Lock Link */}
+      <footer className="bg-navy-950 border-t border-navy-900 py-8 px-4 text-center text-xs text-gray-400 space-y-4">
+        {/* Navigation & Legal Links */}
+        <div className="flex flex-wrap justify-center items-center gap-4 sm:gap-6 text-gray-400 font-medium">
+          <button 
+            onClick={() => handleNavigate('about')} 
+            className="hover:text-orange-electric transition-colors cursor-pointer"
+          >
+            אודות החברה והצי
+          </button>
+          <span>•</span>
+          <button 
+            onClick={() => setLegalModal('terms')} 
+            className="hover:text-orange-electric transition-colors cursor-pointer"
+          >
+            תקנון והגבלת אחריות
+          </button>
+          <span>•</span>
+          <button 
+            onClick={() => setLegalModal('privacy')} 
+            className="hover:text-orange-electric transition-colors cursor-pointer"
+          >
+            מדיניות פרטיות
+          </button>
+          <span>•</span>
+          <button 
+            onClick={() => setLegalModal('security')} 
+            className="hover:text-orange-electric transition-colors cursor-pointer"
+          >
+            מרכז אבטחת מידע (SOC 2)
+          </button>
+        </div>
+
+        {/* Discreet Admin Lock Link (Authorized Only) */}
+        <div className="flex justify-center items-center gap-3 pt-2 text-[11px] text-gray-500">
+          <span>© {new Date().getFullYear()} טראק דיל il (Truk Dealil IL). כל הזכויות שמורות.</span>
+          <span>•</span>
+          <button
+            onClick={() => setAdminModalOpen(true)}
+            className="text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1 font-mono text-[11px] cursor-pointer"
+            title="כניסת מורשים (קוד PIN נדרש)"
+          >
+            <span>מורשים בלבד</span>
+            <Lock className="w-3 h-3" />
+          </button>
+        </div>
       </footer>
 
+      {/* Admin PIN Verification Modal */}
+      {adminModalOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-navy-950/85 backdrop-blur-md" dir="rtl">
+          <div className="bg-navy-900 border-2 border-navy-700 rounded-2xl w-full max-w-sm p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 mx-auto rounded-xl bg-orange-electric/15 border border-orange-electric/30 flex items-center justify-center text-orange-electric">
+                <KeyRound className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-black text-white">כניסת מנהל מערכת</h3>
+              <p className="text-xs text-gray-400">
+                אזור זה מוגבל למורשים בלבד. הזן קוד PIN סודי להמשך.
+              </p>
+            </div>
+
+            <form onSubmit={handleAdminPinSubmit} className="space-y-3">
+              <input
+                type="password"
+                value={adminPinInput}
+                onChange={(e) => {
+                  setAdminPinInput(e.target.value);
+                  setAdminPinError(false);
+                }}
+                placeholder="הזן קוד PIN מנהל..."
+                className="w-full px-4 py-2.5 bg-navy-950 border border-navy-750 text-white rounded-xl text-center text-sm font-mono tracking-widest outline-none focus:border-orange-electric"
+                autoFocus
+              />
+
+              {adminPinError && (
+                <div className="flex items-center gap-1.5 text-xs text-red-400 justify-center">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>קוד אימות מנהל שגוי — הגישה נחסמה</span>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdminModalOpen(false);
+                    setAdminPinInput('');
+                    setAdminPinError(false);
+                  }}
+                  className="flex-1 py-2 bg-navy-800 hover:bg-navy-750 text-gray-300 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                >
+                  ביטול
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2 bg-orange-electric hover:bg-orange-hover text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
+                >
+                  אימות וכניסה
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Israeli Standard IS 5568 AA Accessibility Floating Widget */}
+      <AccessibilityWidget />
+
+      {/* Legal Modals (Terms, Privacy, Security) */}
+      <LegalModals activeModal={legalModal} onClose={() => setLegalModal(null)} />
+
+      {/* AI Concierge Chat Drawer */}
       <AIConcierge onNavigate={handleNavigate} />
     </div>
   );
