@@ -124,7 +124,7 @@ export default function LiveMap({ moves, onSelectMove, drivers = [] }: LiveMapPr
   const driversGroupRef = useRef<any>(null);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const [mapTheme, setMapTheme] = useState<'dark' | 'light'>('dark');
-  const [selectedRouteFilter, setSelectedRouteFilter] = useState<'all' | 'transit' | 'bidding' | 'completed' | 'online_drivers'>('all');
+  const [selectedRouteFilter, setSelectedRouteFilter] = useState<'all' | 'transit' | 'bidding' | 'completed' | 'online_drivers' | 'express_couriers'>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
   // Filtering active moves
@@ -391,20 +391,52 @@ export default function LiveMap({ moves, onSelectMove, drivers = [] }: LiveMapPr
       polyline.bindPopup(popupContent);
     });
 
-    // 6. Draw Online Drivers (Priority radius 25 km & Backhauls)
-    if (selectedRouteFilter === 'all' || selectedRouteFilter === 'online_drivers') {
-      const onlineDrivers = (drivers || []).filter((d: any) => d.status === 'active' || !d.status);
+    // 6. Draw Online Drivers & Express Couriers (Priority radius 25 km & Backhauls)
+    if (selectedRouteFilter === 'all' || selectedRouteFilter === 'online_drivers' || selectedRouteFilter === 'express_couriers') {
+      let onlineDrivers = (drivers || []).filter((d: any) => d.status === 'active' || !d.status);
+      if (selectedRouteFilter === 'express_couriers') {
+        onlineDrivers = onlineDrivers.filter((d: any) => 
+          d.truckType?.includes('קטנוע') || d.truckType?.includes('אופנוע') || d.truckType?.includes('פרטי') || d.truckType?.includes('טנדר') || d.id?.includes('exp')
+        );
+      }
       onlineDrivers.forEach((driver: any) => {
         const baseCity = driver.region || 'תל אביב';
         const baseCoords = getCityCoords(baseCity);
         const driverCoords = getOffsetCoords('drv_' + (driver.id || driver.phone), baseCoords);
         bounds.extend(driverCoords);
 
+        let iconSymbol = '🚚';
+        let badgeColor = 'bg-emerald-500/20 text-emerald-400';
+        let badgeText = 'נהג Online 🟢';
+        let commissionText = 'עמלת מערכת: 15% ספוט / 10% B2B';
+
+        if (driver.truckType?.includes('קטנוע') || driver.truckType?.includes('אופנוע')) {
+          iconSymbol = '🛵';
+          badgeColor = 'bg-orange-electric/25 text-orange-electric';
+          badgeText = 'שליח קטנוע (Truk-Express) ⚡';
+          commissionText = 'עמלה: 5% אשראי / 8% מזומן (COD)';
+        } else if (driver.truckType?.includes('פרטי') || driver.truckType?.includes('סטיישן')) {
+          iconSymbol = '🚗';
+          badgeColor = 'bg-blue-500/25 text-blue-400';
+          badgeText = 'שליח רכב פרטי (Truk-Express) ⚡';
+          commissionText = 'עמלה: 5% אשראי / 8% מזומן (COD)';
+        } else if (driver.truckType?.includes('טנדר')) {
+          iconSymbol = '🛻';
+          badgeColor = 'bg-purple-500/25 text-purple-300';
+          badgeText = 'שליח טנדר קל (Truk-Express) ⚡';
+          commissionText = 'עמלה: 5% אשראי / 8% מזומן (COD)';
+        } else if (driver.truckType?.includes('מנוף')) {
+          iconSymbol = '🏗️';
+          badgeColor = 'bg-amber-500/25 text-amber-300';
+          badgeText = 'מנופאי מוסמך Online 🏗️';
+          commissionText = 'עמלה: 15% (עוז משא / סולם)';
+        }
+
         const driverHtml = `
           <div class="relative flex items-center justify-center cursor-pointer">
             <div class="absolute w-8 h-8 bg-emerald-400/30 border border-emerald-400 rounded-full animate-ping"></div>
-            <div class="w-7 h-7 rounded-full bg-emerald-500 border-2 border-white shadow-xl flex items-center justify-center text-white text-xs z-10 font-bold">
-              🚚
+            <div class="w-7 h-7 rounded-full bg-navy-900 border-2 border-orange-electric shadow-xl flex items-center justify-center text-white text-xs z-10 font-bold">
+              ${iconSymbol}
             </div>
           </div>
         `;
@@ -415,15 +447,24 @@ export default function LiveMap({ moves, onSelectMove, drivers = [] }: LiveMapPr
           iconAnchor: [16, 16]
         });
 
-        // Generate personalized direct WhatsApp dispatch for this specific driver
-        const targetMove = moves.find(m => m.status === 'bidding') || moves[0];
+        // Generate personalized direct WhatsApp dispatch for this specific driver/courier
+        const isExpress = driver.truckType?.includes('קטנוע') || driver.truckType?.includes('פרטי') || driver.truckType?.includes('טנדר') || driver.id?.includes('exp');
+        const targetMove = moves.find(m => isExpress ? m.moveType === 'express' : m.status === 'bidding') || moves[0];
         let directDispatchBtn = '';
         if (targetMove) {
-          const directMsg = `שלום ${driver.fullName || 'מוביל'}, נכנסה הרגע הובלה מותאמת בול לרכב ${driver.truckType || 'משאית הובלות'} ולציר הנסיעה שלך:
+          const directMsg = isExpress
+            ? `שלום ${driver.fullName || 'שליח'}, נכנסה הרגע קריאת אקספרס מותאמת בול לרכב ${driver.truckType || 'אקספרס'}:
+📍 מסלול: ${targetMove.originAddress} ➔ ${targetMove.destAddress}
+⚡ סיווג: משלוח אקספרס מיידי
+💵 הצעת מחיר שליח: ₪75 (עמלה: 5% אשראי / 8% מזומן)
+🔒 פרטי האיסוף המלאים נמסרים לאחר אישור.
+🔗 לצפייה ואישור: https://truck-deal.vercel.app/?view=driver&moveId=${targetMove.id}`
+            : `שלום ${driver.fullName || 'מוביל'}, נכנסה הרגע הובלה מותאמת בול לרכב ${driver.truckType || 'משאית הובלות'} ולציר הנסיעה שלך:
 📍 מסלול: ${targetMove.originAddress} ➔ ${targetMove.destAddress}
 📦 תכולה: ${targetMove.items && targetMove.items.length > 0 ? targetMove.items.map(i => `${i.name} (${i.quantity})`).join(', ') : 'תכולת דירה מלאה'}, קומה ${targetMove.floor}
 💵 שכר נטו למוביל: ₪1,850
 🔗 לצפייה והגשת הצעה ישירה: https://truck-deal.vercel.app/?view=driver&moveId=${targetMove.id}`;
+
           const directWaUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(directMsg)}`;
           directDispatchBtn = `
             <a 
@@ -432,7 +473,7 @@ export default function LiveMap({ moves, onSelectMove, drivers = [] }: LiveMapPr
               class="w-full text-center py-1.5 mt-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10px] cursor-pointer transition-all flex items-center justify-center gap-1 block"
               style="text-decoration: none;"
             >
-              📲 שיגור הובלה מותאמת ב-WhatsApp
+              📲 שיגור ישיר ב-WhatsApp
             </a>
           `;
         }
@@ -440,18 +481,18 @@ export default function LiveMap({ moves, onSelectMove, drivers = [] }: LiveMapPr
         const driverPopup = `
           <div class="p-3 bg-navy-950 text-white rounded-lg text-right font-sans min-w-[240px]" dir="rtl">
             <div class="flex justify-between items-center pb-1.5 border-b border-navy-800 mb-2">
-              <span class="text-[10px] bg-emerald-500/20 text-emerald-400 font-extrabold px-1.5 py-0.5 rounded flex items-center gap-1">
+              <span class="text-[10px] ${badgeColor} font-extrabold px-1.5 py-0.5 rounded flex items-center gap-1">
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                נהג Online 🟢
+                ${badgeText}
               </span>
               <span class="text-xs font-bold text-amber-400">★ ${driver.rating || '5.0'}</span>
             </div>
-            <h4 class="font-bold text-sm text-white mb-0.5">${driver.fullName || 'נהג מורשה'}</h4>
-            <p class="text-[10px] text-gray-400 mb-1">📞 טלפון: ${driver.phone || 'ממתין לעדכון'}</p>
+            <h4 class="font-bold text-sm text-white mb-0.5">${driver.fullName || 'ספק מורשה'}</h4>
+            <p class="text-[10px] text-gray-400 mb-1">📞 טלפון: ${driver.phone || 'חסוי עד אישור (PII)'}</p>
             <div class="p-2 bg-navy-900 rounded border border-navy-800 text-[10px] space-y-1 mb-2">
-              <p class="text-orange-electric font-semibold">🚛 כלי רכב: ${driver.truckType || 'משאית הובלות'}</p>
+              <p class="text-orange-electric font-semibold">${iconSymbol} כלי רכב: ${driver.truckType || 'כלי רכב מותאם'}</p>
               <p class="text-gray-300">📍 אזור פעילות: ${driver.region || 'מרכז והשרון'}</p>
-              <p class="text-emerald-400 font-bold">🎯 קדימות ברדיוס 25 ק"מ ממיקום GPS</p>
+              <p class="text-emerald-400 font-bold">🎯 ${commissionText}</p>
             </div>
             ${directDispatchBtn}
           </div>
@@ -540,6 +581,18 @@ export default function LiveMap({ moves, onSelectMove, drivers = [] }: LiveMapPr
             className={`px-2 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${selectedRouteFilter === 'completed' ? 'bg-emerald-500/25 text-emerald-400 border border-emerald-500/30' : 'bg-navy-950 text-gray-400 border border-navy-850'}`}
           >
             🏁 הושלמו ({moves.filter(m => m.status === 'completed').length})
+          </button>
+          <button
+            onClick={() => setSelectedRouteFilter('online_drivers')}
+            className={`px-2 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${selectedRouteFilter === 'online_drivers' ? 'bg-emerald-500 text-navy-950 font-black' : 'bg-navy-950 text-emerald-400 border border-emerald-500/30'}`}
+          >
+            🟢 נהגים ({drivers.length})
+          </button>
+          <button
+            onClick={() => setSelectedRouteFilter('express_couriers')}
+            className={`px-2 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${selectedRouteFilter === 'express_couriers' ? 'bg-orange-electric text-white font-black' : 'bg-navy-950 text-orange-electric border border-orange-electric/30'}`}
+          >
+            ⚡ אקספרס ({drivers.filter((d: any) => d.truckType?.includes('קטנוע') || d.truckType?.includes('אופנוע') || d.truckType?.includes('פרטי') || d.truckType?.includes('טנדר') || d.id?.includes('exp')).length})
           </button>
         </div>
 

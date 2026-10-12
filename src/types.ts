@@ -1,4 +1,4 @@
-export type MoveType = 'apartment' | 'office' | 'delivery';
+export type MoveType = 'apartment' | 'office' | 'delivery' | 'express';
 export type TruckAccess = 'easy' | 'medium' | 'difficult' | 'no_parking';
 export type CraneNeeded = 'yes' | 'no' | 'dont_know';
 export type MoveStatus = 'new' | 'bidding' | 'bid_approved' | 'approved_for_driver' | 'completed' | 'cancelled';

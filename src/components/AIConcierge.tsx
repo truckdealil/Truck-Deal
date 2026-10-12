@@ -47,7 +47,7 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
             {
               id: 'init_1',
               sender: 'ai',
-              text: 'שלום! אני <b>Truk AI Dispatcher & Fleet Matchmaker</b> — המוח הלוגיסטי, מנוע התמחור, ומנהל השיבוץ הממוקד של פלטפורמת "טראק דיל il" (דומיין פעיל: https://truck-deal.vercel.app/).<br/><br/>כיצד אוכל לסייע לך באפיון הובלה, התאמת צי רכב ממוקד (מסחרית 3.5ט, משאית רמפה 7.5-12ט, מנוף סולם במה חיצונית, או מנוף זרוע כבד), ושידוך נסיעות חזור Backhaul בהנחה?<br/><br/>🔲 בדיקת נהגי Online זמינים על המפה<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 חישוב נסיעת חזור Backhaul (20% הנחה)',
+              text: 'שלום! אני <b>Truk AI Dispatcher & Express Controller</b> — מנוע הלוגיסטיקה, התמחור והשיגור של פלטפורמת "טראק דיל il" (דומיין פעיל: https://truck-deal.vercel.app/).<br/><br/>המערכת פועלת בשני מסלולים נפרדים וממוקדים:<br/>1. ⚡ <b>מודול משלוחי אקספרס (Truk-Express):</b> קטנועים למעטפות ומסמכים דחופים (עו"ד/רו"ח), רכבים פרטיים לחבילות (1-3 קרטונים), וטנדרים לציוד משרדי (עמלה: 5% באשראי / 8% במזומן COD).<br/>2. 🚛 <b>מודול הובלות כבדות ומנופים:</b> מסחריות 3.5ט, משאיות סגורות 7.5-12ט עם רמפה, מנופי סולם/במה (קומות 1-18) ומנופי זרוע כבדים עוז משא (עמלה: 15% ספוט / 10% B2B).<br/><br/>כיצד אוכל לסייע לך כעת?<br/>🔲 איתור שליח קרוב על המפה 📍<br/>🔲 בדיקת נהגי Online זמינים על המפה<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 חישוב נסיעת חזור Backhaul (20% הנחה)',
               timestamp: new Date().toISOString()
             }
           ]);
@@ -128,8 +128,13 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
     }
 
     // 3. Fallback history search for tracking
-    if (cleanedOption.includes('מעקב חי') || cleanedOption.includes('מקדמה')) {
+    if (cleanedOption.includes('מעקב חי') || cleanedOption.includes('מקדמה') || cleanedOption.includes('סטטוס מסירה') || cleanedOption.includes('אישור מסירה')) {
       for (let i = messages.length - 1; i >= 0; i--) {
+        const expMatch = messages[i].text.match(/EXP-\d+/);
+        if (expMatch && onNavigate) {
+          onNavigate('tracking', expMatch[0]);
+          return;
+        }
         const match = messages[i].text.match(/TRK-\d+/);
         if (match && onNavigate) {
           onNavigate('tracking', match[0]);
@@ -144,6 +149,9 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
           return;
         }
       }
+    } else if (cleanedOption.includes('על המפה') && onNavigate) {
+      // If user wants to see online drivers/couriers on the map
+      onNavigate('landing', null);
     }
 
     handleSendMessage(cleanedOption.replace(/\(https?:\/\/[^\)]+\)/g, '').trim());
@@ -345,14 +353,14 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
             dir="rtl"
           >
             {/* Header */}
-            <div className="bg-navy-950/90 border-b border-navy-800/80 px-5 py-4 flex items-center justify-between flex-row-reverse">
+            <div className="bg-navy-950/90 border-b border-navy-800/80 px-4 py-3 flex items-center justify-between flex-row-reverse">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-orange-electric/10 border border-orange-electric/25 flex items-center justify-center text-orange-electric shadow-inner">
                   <Bot className="w-4 h-4 animate-bounce" />
                 </div>
                 <div>
-                  <h4 className="font-black text-white text-sm">Truk AI Dispatcher</h4>
-                  <span className="text-[9px] text-orange-electric font-bold block leading-none">סדרן ומתמחר לוגיסטי ראשי | טראק דיל il</span>
+                  <h4 className="font-black text-white text-xs sm:text-sm">Truk AI Dispatcher & Express Controller</h4>
+                  <span className="text-[9px] text-orange-electric font-bold block leading-none">סדרן לוגיסטי, מנוע שיגור ותמחור אקספרס | טראק דיל il</span>
                 </div>
               </div>
               <button
@@ -363,9 +371,37 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
               </button>
             </div>
 
+            {/* Quick module selection chips */}
+            <div className="bg-navy-950/90 border-b border-navy-850 px-3 py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+              <button
+                onClick={() => handleSendMessage('אני מעוניין במשלוח אקספרס מהיר של מעטפה ומסמכים דחופים ע״י קטנוע')}
+                className="px-2 py-1 bg-orange-electric/15 hover:bg-orange-electric/25 border border-orange-electric/30 text-orange-electric rounded-lg text-[10px] font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1"
+              >
+                <span>⚡ מעטפה/מסמכים (קטנוע)</span>
+              </button>
+              <button
+                onClick={() => handleSendMessage('אני צריך משלוח חבילה 1-3 קרטונים ע״י רכב פרטי')}
+                className="px-2 py-1 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-blue-300 rounded-lg text-[10px] font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1"
+              >
+                <span>🚗 חבילה (רכב פרטי)</span>
+              </button>
+              <button
+                onClick={() => handleSendMessage('אני צריך לתמחר הובלת דירה 3 חדרים ומשאית סגורה עם רמפה')}
+                className="px-2 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 rounded-lg text-[10px] font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1"
+              >
+                <span>🚚 הובלה ומנוף</span>
+              </button>
+              <button
+                onClick={() => handleSendMessage('איתור שליח קרוב על המפה 📍')}
+                className="px-2 py-1 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-300 rounded-lg text-[10px] font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1"
+              >
+                <span>📍 איתור במפה</span>
+              </button>
+            </div>
+
             {/* Warning regarding real integration */}
-            <div className="bg-orange-electric/10 border-b border-orange-electric/20 px-4 py-1.5 text-center text-[10px] text-gray-300 font-bold">
-              ⚡ מחובר ישירות לערוצי תקשורת Firebase & OneSignal ⚡
+            <div className="bg-orange-electric/10 border-b border-orange-electric/20 px-4 py-1 text-center text-[9px] text-gray-300 font-bold flex items-center justify-center gap-1">
+              <span>⚡ ערוץ שידור ישיר ומאובטח (PII Protected) | עמלות 5% אשראי / 8% מזומן COD ⚡</span>
             </div>
 
             {/* Chat Body messages */}

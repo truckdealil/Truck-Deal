@@ -1,1 +1,88 @@
-[]
+[
+  {
+    "id": "TRK-8420",
+    "clientName": "לקוח Truk Dealil IL",
+    "clientPhone": "050-1234567",
+    "clientEmail": "truck.dealil@gmail.com",
+    "companyName": "",
+    "originAddress": "אזור המרכז, קומה 2",
+    "destAddress": "יעד פריקה, קומה 2",
+    "moveDate": "2026-10-13",
+    "moveTime": "10:00",
+    "moveType": "apartment",
+    "floor": 2,
+    "hasElevator": true,
+    "elevatorDetails": {
+      "sofaFits": true,
+      "fridgeFits": true
+    },
+    "truckAccess": "easy",
+    "craneNeeded": "no",
+    "items": [
+      {
+        "id": "item_disp_1",
+        "name": "תכולת הובלה מלאה לפי אפיון סדרן AI",
+        "category": "furniture",
+        "quantity": 1
+      }
+    ],
+    "images": [],
+    "createdAt": "2026-10-12T10:34:13.987Z",
+    "status": "completed",
+    "paymentStatus": "pending_deposit",
+    "clientApprovedForBilling": true,
+    "driverBids": [],
+    "aiAnalysis": {
+      "estimatedPriceRange": "₪2,000 - ₪2,800",
+      "difficultyScore": 5,
+      "recommendations": [
+        "מכרז פתוח לנהגים וספקים מורשים",
+        "מעקב דיגיטלי בזמן אמת פעיל"
+      ],
+      "summary": "כרטיס הובלה ומכרז [TRK-8420] שודר בהצלחה"
+    }
+  },
+  {
+    "id": "EXP-5233",
+    "clientName": "לקוח Truk-Express",
+    "clientPhone": "050-7654321",
+    "clientEmail": "truck.dealil@gmail.com",
+    "companyName": "משלוח אקספרס",
+    "originAddress": "תל אביב, נקודת איסוף (חסוי)",
+    "destAddress": "גוש דן, נקודת מסירה",
+    "moveDate": "2026-10-12",
+    "moveTime": "מיידי (Express)",
+    "moveType": "express",
+    "floor": 1,
+    "hasElevator": true,
+    "elevatorDetails": {
+      "sofaFits": true,
+      "fridgeFits": true
+    },
+    "truckAccess": "easy",
+    "craneNeeded": "no",
+    "items": [
+      {
+        "id": "exp_item_1",
+        "name": "משלוח אקספרס דחוף (Truk-Express)",
+        "category": "express",
+        "quantity": 1
+      }
+    ],
+    "images": [],
+    "createdAt": "2026-10-12T10:53:48.708Z",
+    "status": "bidding",
+    "paymentStatus": "pending_payment",
+    "clientApprovedForBilling": false,
+    "driverBids": [],
+    "aiAnalysis": {
+      "estimatedPriceRange": "₪55 - ₪120",
+      "difficultyScore": 1,
+      "recommendations": [
+        "שליח אקספרס קטנוע / רכב פרטי",
+        "עמלת מערכת 5% באשראי / 8% במזומן (COD)"
+      ],
+      "summary": "כרטיס משלוח אקספרס [EXP-5233] שודר לשליחי און-ליין"
+    }
+  }
+]
