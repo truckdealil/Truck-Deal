@@ -84,5 +84,134 @@
       ],
       "summary": "כרטיס משלוח אקספרס [EXP-5233] שודר לשליחי און-ליין"
     }
+  },
+  {
+    "id": "EXP-7741",
+    "clientName": "לקוח Truk-Express",
+    "clientPhone": "050-7654321",
+    "clientEmail": "truck.dealil@gmail.com",
+    "companyName": "משלוח אקספרס",
+    "originAddress": "תל אביב, נקודת איסוף (חסוי)",
+    "destAddress": "גוש דן, נקודת מסירה",
+    "moveDate": "2026-10-12",
+    "moveTime": "מיידי (Express)",
+    "moveType": "express",
+    "floor": 1,
+    "hasElevator": true,
+    "elevatorDetails": {
+      "sofaFits": true,
+      "fridgeFits": true
+    },
+    "truckAccess": "easy",
+    "craneNeeded": "no",
+    "items": [
+      {
+        "id": "exp_item_1",
+        "name": "משלוח אקספרס דחוף (Truk-Express)",
+        "category": "express",
+        "quantity": 1
+      }
+    ],
+    "images": [],
+    "createdAt": "2026-10-12T10:59:46.026Z",
+    "status": "bidding",
+    "paymentStatus": "pending_payment",
+    "clientApprovedForBilling": false,
+    "driverBids": [],
+    "aiAnalysis": {
+      "estimatedPriceRange": "₪55 - ₪120",
+      "difficultyScore": 1,
+      "recommendations": [
+        "שליח אקספרס קטנוע / רכב פרטי",
+        "עמלת מערכת 5% באשראי / 8% במזומן (COD)"
+      ],
+      "summary": "כרטיס משלוח אקספרס [EXP-7741] שודר לשליחי און-ליין"
+    }
+  },
+  {
+    "id": "EXP-2524",
+    "clientName": "לקוח Truk-Express",
+    "clientPhone": "050-7654321",
+    "clientEmail": "truck.dealil@gmail.com",
+    "companyName": "משלוח אקספרס",
+    "originAddress": "תל אביב, נקודת איסוף (חסוי)",
+    "destAddress": "גוש דן, נקודת מסירה",
+    "moveDate": "2026-10-12",
+    "moveTime": "מיידי (Express)",
+    "moveType": "express",
+    "floor": 1,
+    "hasElevator": true,
+    "elevatorDetails": {
+      "sofaFits": true,
+      "fridgeFits": true
+    },
+    "truckAccess": "easy",
+    "craneNeeded": "no",
+    "items": [
+      {
+        "id": "exp_item_1",
+        "name": "משלוח אקספרס דחוף (Truk-Express)",
+        "category": "express",
+        "quantity": 1
+      }
+    ],
+    "images": [],
+    "createdAt": "2026-10-12T11:04:15.439Z",
+    "status": "bidding",
+    "paymentStatus": "pending_payment",
+    "clientApprovedForBilling": false,
+    "driverBids": [],
+    "aiAnalysis": {
+      "estimatedPriceRange": "₪55 - ₪120",
+      "difficultyScore": 1,
+      "recommendations": [
+        "שליח אקספרס קטנוע / רכב פרטי",
+        "עמלת מערכת 5% באשראי / 8% במזומן (COD)"
+      ],
+      "summary": "כרטיס משלוח אקספרס [EXP-2524] שודר לשליחי און-ליין"
+    }
+  },
+  {
+    "id": "TRK-9921",
+    "clientName": "לקוח Truk Dealil IL",
+    "clientPhone": "050-1234567",
+    "clientEmail": "truck.dealil@gmail.com",
+    "companyName": "",
+    "originAddress": "אזור המרכז, קומה 2",
+    "destAddress": "יעד פריקה, קומה 2",
+    "moveDate": "2026-10-13",
+    "moveTime": "10:00",
+    "moveType": "apartment",
+    "floor": 2,
+    "hasElevator": true,
+    "elevatorDetails": {
+      "sofaFits": true,
+      "fridgeFits": true
+    },
+    "truckAccess": "easy",
+    "craneNeeded": "no",
+    "items": [
+      {
+        "id": "item_disp_1",
+        "name": "תכולת הובלה מלאה לפי אפיון סדרן AI",
+        "category": "furniture",
+        "quantity": 1
+      }
+    ],
+    "images": [],
+    "createdAt": "2026-10-12T11:04:27.011Z",
+    "status": "bidding",
+    "paymentStatus": "pending_deposit",
+    "clientApprovedForBilling": false,
+    "driverBids": [],
+    "aiAnalysis": {
+      "estimatedPriceRange": "₪2,000 - ₪2,800",
+      "difficultyScore": 5,
+      "recommendations": [
+        "מכרז פתוח לנהגים וספקים מורשים",
+        "מעקב דיגיטלי בזמן אמת פעיל"
+      ],
+      "summary": "כרטיס הובלה ומכרז [TRK-9921] שודר בהצלחה"
+    }
   }
 ]
