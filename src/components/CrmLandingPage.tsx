@@ -8,15 +8,13 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MoveType, TruckAccess, CraneNeeded, MoveRequest } from '../types';
+// Premium Assets from src/assets/images
+import truckImg from '../assets/images/logistic_truck_highway_1784514374249.jpg';
+import techImg from '../assets/images/tracking_dashboard_tech_1784514388814.jpg';
+import teamImg from '../assets/images/professional_moving_team_1784514402333.jpg';
 import trac1Img from '../assets/images/trac.jpg';
 import trac2Img from '../assets/images/trac2.jpg';
 import trac3Img from '../assets/images/trac3.jpg';
-const truckImg = '/src/assets/images/logistic_truck_highway_1784514374249.jpg';
-const techImg = '/src/assets/images/tracking_dashboard_tech_1784514388814.jpg';
-const teamImg = '/src/assets/images/professional_moving_team_1784514402333.jpg';
-const trac1Img = '/src/assets/images/trac.jpg';
-const trac2Img = '/src/assets/images/trac2.jpg';
-const trac3Img = '/src/assets/images/trac3.jpg';
 
 
 interface CrmLandingPageProps {
@@ -30,33 +28,57 @@ export default function CrmLandingPage({ onNavigateToQuote, onNavigateToDriverRe
 const slides = [
     {
       image: truckImg,
-      title: "צי משאיות מתקדם בפריסה ארצית",
-      description: "שינוע מהיר ובטוח לכל חלקי הארץ עם משאיות חדישות המותאמות לכל נפח מטען"
-    },
-    {
-      image: techImg,
-      title: "טכנולוגיית מעקב ואבטחה במעגל סגור",
-      description: "שקיפות מלאה מול הלקוח עם מערכת ניתוח קושי AI וסנכרון ישיר ל-WhatsApp"
-    },
-    {
-      image: teamImg,
-      title: "צוות מובילים וסבלים מורשים",
-      description: "הקפדה יתרה על שלמות התכולה, עמידה קפדנית בזמנים וטיפול מקצועי בציוד רגיש"
+      badge: "צי משאיות פרימיום בפריסה ארצית",
+      tag: "100% כיסוי ביטוחי",
+      title: "צי המשאיות החזק בישראל — עוצמה, דיוק וביטחון מלא",
+      description: "פתרונות שינוע והובלה כבדה עם משאיות סגורות 7.5–12 טון, רמפות הידראוליות וביטוח משא מלא. הציוד שלך בידיים המקצועיות והבטוחות ביותר.",
+      highlight: "זמינות ספוט מיידית לכל חלקי הארץ",
+      cta: "מחשבון ומכרז הובלה חכם"
     },
     {
       image: trac1Img,
-      title: "פתרונות שינוע ולוגיסטיקה מתקדמים",
-      description: "מערך ארצי חכם המנוהל דיגיטלית בסטנדרט העולמי הגבוה ביותר"
+      badge: "עבודות מנוף והרמה לקומות 1–18",
+      tag: "מנופאים מוסמכים בלבד",
+      title: "הרמה הנדסית ומנופי סולם מתקדמים — ביצוע מושלם ללא שריטה",
+      description: "צי מנופי זרוע כבדים (עוז משא) ומנופי סולם חיצוניים לריהוט יוקרה, משטחי שיש, מפתחי זכוכית וציוד תעשייתי. ליווי מנופאי מוסמך וביטוח צד ג' מלא.",
+      highlight: "הרמה מבוקרת עד קומה 18",
+      cta: "בדיקת זמינות מנופי הרמה"
+    },
+    {
+      image: techImg,
+      badge: "טכנולוגיית שליטה ומעקב לוויני בלייב",
+      tag: "סנכרון ישיר ל-WhatsApp",
+      title: "שקיפות מוחלטת בכל רגע: מעקב GPS חי וניתוח AI מתקדם",
+      description: "אלגוריתם תמחור שקוף בזמן אמת, סדרן AI שמאתר את המסלול האופטימלי, ומערכת מעקב דיגיטלית שמעדכנת אותך במיקום המשאית מהאיסוף ועד המסירה.",
+      highlight: "עדכוני מיקום חיים ללא הפתעות",
+      cta: "לפורטל המעקב והמקדמה"
+    },
+    {
+      image: teamImg,
+      badge: "חוויית שירות White-Glove VIP",
+      tag: "סטנדרט פרימיום",
+      title: "צוותי מובילים וסבלים מורשים — סטנדרט עילאי לתכולות רגישות",
+      description: "אריזה מרופדת רב-שכבתית, פירוק והרכבה מדויקים של ריהוט יוקרה והקפדה בלתי מתפשרת על שלמות התכולה. שירות אישי, אלגנטי ומדויק על השעון.",
+      highlight: "סבלות ואריזת אומן לציוד רגיש",
+      cta: "הזמן הובלת פרימיום"
     },
     {
       image: trac2Img,
-      title: "צי משאיות חדיש ובקרת לוויין",
-      description: "כל הובלה מבוקרת 24/7 ומנווטת בבטחה ישירות אל היעד"
+      badge: "מהפכת ה-Backhaul הבלעדית — 20% הנחה",
+      tag: "20% הנחת חזור",
+      title: "משאית חוזרת ריקה? אתה מרוויח חיסכון של 20% במחיר!",
+      description: "מערכת התזמון הבלעדית של טראק דיל מאתרת משאיות בנסיעות חזור מחיפה, ירושלים ובאר שבע — ומעניקה לך הובלת פרימיום מלאה במחיר שובר שוק.",
+      highlight: "חיסכון של ₪200–₪400 להובלה",
+      cta: "שריון נסיעת חזור מוזלת"
     },
     {
       image: trac3Img,
-      title: "שירות בפריסה ארצית רחבה",
-      description: "מענה מושלם להובלות דירה יוקרתיות ולוגיסטיקה עסקית מורכבת"
+      badge: "שליחויות אקספרס ושיגור עסקי מהיר",
+      tag: "זמן תגובה ממוצע 20 דק'",
+      title: "שיגור אקספרס מהיר בפריסה ארצית — דקה אחת והשליח בדרך",
+      description: "מענה VIP למשרדי עו״ד, רו״ח וחברות הייטק: מעטפות דחופות, קטנועים, רכבים פרטיים וטנדרים לציוד משרדי. עמלות שקופות ומעקב חי על המפה.",
+      highlight: "שינוע מהיר של מסמכים ודוגמיות",
+      cta: "פתיחת משלוח אקספרס מהיר"
     }
   ];
 
@@ -326,76 +348,80 @@ const slides = [
           <div className="absolute inset-0 bg-black/30" />
         </div>
 
-        {/* Content Box */}
+        {/* Content Box with Dynamic Slide Luxury Animation */}
         <div className="relative z-10 max-w-4xl mx-auto text-center px-4 space-y-6">
-          <motion.div 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#0a192f]/95 border border-[#ff7f00]/30 text-[#ff7f00] text-xs md:text-sm font-bold tracking-wide shadow-[0_0_15px_rgba(255,127,0,0.15)] mx-auto"
-          >
-            <Sparkles className="w-4 h-4 animate-pulse text-[#ff7f00]" />
-            <span>טכנולוגיית הלוגיסטיקה המתקדמת בישראל</span>
-          </motion.div>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={`slide-content-${currentSlide}`}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.5 }}
+              className="space-y-4"
+            >
+              {/* Slide Luxury Badge */}
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#0a192f]/95 border border-[#ff7f00]/40 text-[#ff7f00] text-xs md:text-sm font-black tracking-wide shadow-[0_0_20px_rgba(255,127,0,0.25)] mx-auto backdrop-blur-md">
+                <Sparkles className="w-4 h-4 animate-pulse text-[#ff7f00]" />
+                <span>{slides[currentSlide].badge}</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-[#ff7f00] animate-ping" />
+                <span className="text-[11px] font-mono text-gray-300 border-r border-[#ff7f00]/40 pr-2 mr-1">
+                  {slides[currentSlide].tag}
+                </span>
+              </div>
 
-          <motion.h1 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="text-4xl md:text-6xl font-extrabold text-white tracking-tight leading-tight"
-          >
-            מהירות, ביטחון ושליטה מלאה <br />
-            <span className="text-[#ff7f00] bg-gradient-to-r from-[#ff7f00] to-amber-500 bg-clip-text text-transparent">בכל הובלה</span>
-          </motion.h1>
+              {/* Slide Dynamic Title */}
+              <h1 className="text-3xl sm:text-4xl md:text-6xl font-black text-white tracking-tight leading-tight drop-shadow-2xl">
+                {slides[currentSlide].title}
+              </h1>
 
-          <motion.p 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.6 }}
-            className="text-md md:text-xl text-gray-300 max-w-2xl mx-auto leading-relaxed font-light"
-          >
-            פלטפורמת Truk Dealil IL מחברת אתכם ישירות לנהגי משאיות מורשים, עם מחשבון אומדן מבוסס בינה מלאכותית, סנכרון WhatsApp ומערכת אבטחה פיננסית.
-          </motion.p>
+              {/* Slide Dynamic Description */}
+              <p className="text-sm sm:text-base md:text-xl text-gray-200 max-w-3xl mx-auto leading-relaxed font-normal drop-shadow-md">
+                {slides[currentSlide].description}
+              </p>
+            </motion.div>
+          </AnimatePresence>
 
-          {/* Slider Indicators */}
-          <div className="flex justify-center gap-3 pt-4">
-            {slides.map((_, idx) => (
+          {/* Slider Indicators (Progress Dots) */}
+          <div className="flex justify-center items-center gap-2.5 pt-2">
+            {slides.map((slide, idx) => (
               <button
                 key={idx}
                 onClick={() => setCurrentSlide(idx)}
-                className={`w-3.5 h-3.5 rounded-full transition-all duration-300 ${currentSlide === idx ? 'bg-[#ff7f00] w-8' : 'bg-white/40 hover:bg-white/70'}`}
+                className={`h-2.5 rounded-full transition-all duration-500 cursor-pointer ${
+                  currentSlide === idx 
+                    ? 'bg-[#ff7f00] w-10 shadow-[0_0_15px_rgba(255,127,0,0.6)]' 
+                    : 'bg-white/30 hover:bg-white/60 w-2.5'
+                }`}
+                aria-label={`Slide ${idx + 1}`}
+                title={slide.title}
               />
             ))}
           </div>
 
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.8 }}
-            className="flex flex-col sm:flex-row gap-4 justify-center pt-4"
-          >
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-3.5 justify-center pt-2">
             <button
               onClick={onNavigateToQuote}
-              className="px-8 py-4 bg-[#ff7f00] hover:bg-[#e06f00] text-white font-bold rounded-xl transition-all duration-300 transform hover:-translate-y-1 shadow-[0_0_25px_rgba(255,127,0,0.35)] flex items-center justify-center gap-2 text-lg cursor-pointer"
+              className="px-8 py-4 bg-gradient-to-r from-[#ff7f00] via-orange-500 to-[#e06f00] hover:brightness-110 text-white font-black rounded-2xl transition-all duration-300 transform hover:-translate-y-1 shadow-[0_0_30px_rgba(255,127,0,0.4)] flex items-center justify-center gap-2.5 text-base md:text-lg cursor-pointer"
             >
               <Truck className="w-5 h-5" />
-              <span>מחשבון ומכרז הובלה חכם</span>
+              <span>{slides[currentSlide].cta || 'מחשבון ומכרז הובלה חכם'}</span>
             </button>
             {onNavigateToDriverRegister && (
               <button
                 onClick={onNavigateToDriverRegister}
-                className="px-6 py-4 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 hover:text-white font-bold rounded-xl transition-all duration-300 flex items-center justify-center gap-2 text-lg cursor-pointer shadow-md"
+                className="px-6 py-4 bg-[#0a192f]/90 hover:bg-[#122846] border border-emerald-500/50 text-emerald-300 hover:text-white font-bold rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 text-base md:text-lg cursor-pointer shadow-lg backdrop-blur-md"
               >
                 <span>רישום נהגים ומנופים 🚜</span>
               </button>
             )}
             <a
               href="#leads-join-section"
-              className="px-8 py-4 bg-[#0a192f]/90 hover:bg-[#122846] border border-gray-700 hover:border-[#ff7f00] text-gray-200 hover:text-white font-bold rounded-xl transition-all duration-300 flex items-center justify-center gap-2 text-lg"
+              className="px-6 py-4 bg-[#0a192f]/80 hover:bg-[#122846] border border-gray-700 hover:border-[#ff7f00] text-gray-200 hover:text-white font-bold rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 text-base md:text-lg backdrop-blur-md"
             >
               <span>יצירת קשר ושותפויות</span>
             </a>
-          </motion.div>
+          </div>
         </div>
 
         {/* Next/Prev Navigation Arrows */}
