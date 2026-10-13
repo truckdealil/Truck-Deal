@@ -13,8 +13,8 @@ import { MoveType, TruckAccess, CraneNeeded, MoveRequest } from '../types';
 const truckImg = '/src/assets/images/logistic_truck_highway_1784514374249.jpg';
 const techImg = '/src/assets/images/tracking_dashboard_tech_1784514388814.jpg';
 const teamImg = '/src/assets/images/professional_moving_team_1784514402333.jpg';
-const teamImg = '/src/assets/images/trac.jpg
-const teamImg = '/src/assets/images/trac2.jpg
+const teamImg = '/src/assets/images/trac.jpg';
+const teamImg = '/src/assets/images/trac2.jpg';
 const teamImg = '/src/assets/images/trac3.jpg
 ';
 
@@ -49,6 +49,11 @@ export default function CrmLandingPage({ onNavigateToQuote, onNavigateToDriverRe
     },
     {
       image: 'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=1200&q=80',
+      title: 'צי משאיות חדיש ובקרת לוויין',
+      description: 'כל הובלה מבוקרת 24/7 ומנווטת בבטחה ישירות אל היעד.'
+    },
+        {
+      image: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80',
       title: 'צי משאיות חדיש ובקרת לוויין',
       description: 'כל הובלה מבוקרת 24/7 ומנווטת בבטחה ישירות אל היעד.'
     },
