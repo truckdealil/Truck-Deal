@@ -16,7 +16,7 @@ const teamImg = '/src/assets/images/professional_moving_team_1784514402333.jpg';
 const teamImg = '/src/assets/images/trac.jpg';
 const teamImg = '/src/assets/images/trac2.jpg';
 const teamImg = '/src/assets/images/trac3.jpg';
-';
+
 
 interface CrmLandingPageProps {
   onNavigateToQuote: () => void;
