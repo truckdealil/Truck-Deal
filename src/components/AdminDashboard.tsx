@@ -1069,6 +1069,7 @@ export default function AdminDashboard() {
         <div className="mb-8">
           <LiveMap 
             moves={moves} 
+            drivers={drivers}
             onSelectMove={(move) => {
               setActiveTab('moves');
               setSelectedMove(move);
