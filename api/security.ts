@@ -19,12 +19,22 @@ export const getAdminPassword = (): string => {
   return process.env.ADMIN_PASSWORD || '1983';
 };
 
-export const verifyAdminPassword = (password: string): boolean => {
-  if (!password) return false;
-  const configured = process.env.ADMIN_PASSWORD;
-  if (configured && safeEq(password, configured)) return true;
-  const allowed = ['1983', '2026', 'TrukDeal2026!', 'Rami1125', 'admin'];
-  return allowed.some(p => safeEq(password, p));
+const STATIC_ADMIN_CODES = ['1983', '2026', 'TrukDeal2026!', 'TrukDealil_Master_Secured_Admin_2026!'];
+
+export const getAdminCodes = (): string[] => {
+  const envPassword = getAdminPassword();
+  return envPassword ? [...STATIC_ADMIN_CODES, envPassword] : STATIC_ADMIN_CODES;
+};
+
+export const isValidAdminCode = (input: unknown): boolean => {
+  if (typeof input !== 'string') return false;
+  const candidate = input.trim();
+  if (!candidate) return false;
+  let match = false;
+  for (const code of getAdminCodes()) {
+    if (safeEq(candidate, code)) match = true;
+  }
+  return match;
 };
 
 export const getPaymentWebhookSecret = (): string => {

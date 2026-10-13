@@ -503,7 +503,7 @@ export default function App() {
               {adminPinError && (
                 <div className="flex items-center gap-1.5 text-xs text-red-400 justify-center">
                   <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>קוד אימות מנהל שגוי — הגישה נחסמה</span>
+                  <span>קוד שגוי — נסה שוב</span>
                 </div>
               )}
 
