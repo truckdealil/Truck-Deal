@@ -80,22 +80,49 @@ export default function AdminDashboard() {
     }
   }, [isAdminAuthenticated]);
 
-  const handleAdminLogin = (e: React.FormEvent) => {
+  const getAdminToken = () => {
+    return localStorage.getItem('truckdeal_admin_jwt') || localStorage.getItem('truckdeal_admin_token') || '';
+  };
+
+  const getAuthHeaders = () => {
+    const token = getAdminToken();
+    return {
+      'Authorization': `Bearer ${token}`,
+      'x-admin-token': token,
+      'Content-Type': 'application/json'
+    };
+  };
+
+  const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const validPassword = import.meta.env.VITE_ADMIN_PASSWORD || 'Rami1125';
-    if (adminPasswordInput.trim() === validPassword) {
-      setIsAdminAuthenticated(true);
-      localStorage.setItem('truckdeal_admin_auth', 'true');
-      localStorage.setItem('truckdeal_admin_token', adminPasswordInput.trim());
-      setAuthError('');
-    } else {
-      setAuthError('סיסמת מנהל שגויה!');
+    setAuthError('');
+    const cleanPassword = adminPasswordInput.trim();
+    if (!cleanPassword) return;
+
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: cleanPassword })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIsAdminAuthenticated(true);
+        localStorage.setItem('truckdeal_admin_jwt', data.token);
+        localStorage.setItem('truckdeal_admin_auth', 'true');
+        setAuthError('');
+      } else {
+        setAuthError('סיסמת מנהל שגויה (Zero-Trust)!');
+      }
+    } catch {
+      setAuthError('שגיאת תקשורת באימות מנהל');
     }
   };
 
   const handleAdminLogout = () => {
     setIsAdminAuthenticated(false);
     localStorage.removeItem('truckdeal_admin_auth');
+    localStorage.removeItem('truckdeal_admin_jwt');
     localStorage.removeItem('truckdeal_admin_token');
     setAdminPasswordInput('');
   };
@@ -104,18 +131,21 @@ export default function AdminDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const adminToken = localStorage.getItem('truckdeal_admin_token') || 'Rami1125';
-      const authHeader = { 'x-admin-token': adminToken };
+      const headers = getAuthHeaders();
 
       const [movesRes, leadsRes, driversRes, settingsRes, chatsRes] = await Promise.all([
-        fetch('/api/moves', { headers: authHeader }),
-        fetch('/api/leads', { headers: authHeader }),
-        fetch('/api/drivers', { headers: authHeader }),
-        fetch('/api/settings', { headers: authHeader }),
-        fetch('/api/chats', { headers: authHeader })
+        fetch('/api/moves', { headers }),
+        fetch('/api/leads', { headers }),
+        fetch('/api/drivers', { headers }),
+        fetch('/api/settings', { headers }),
+        fetch('/api/chats', { headers })
       ]);
 
       if (!movesRes.ok || !leadsRes.ok) {
+        if (movesRes.status === 401 || movesRes.status === 403) {
+          handleAdminLogout();
+          throw new Error('פג תוקף אימות המנהל. נא להתחבר מחדש.');
+        }
         throw new Error('שגיאה בשליפת נתוני הניהול מהשרת');
       }
 
@@ -203,7 +233,10 @@ export default function AdminDashboard() {
   const handleDeleteDriver = async (driverId: string) => {
     if (!confirm('האם אתה בטוח שברצונך למחוק נהג זה מרשימת התפוצה?')) return;
     try {
-      const response = await fetch(`/api/drivers/${driverId}`, { method: 'DELETE' });
+      const response = await fetch(`/api/drivers/${driverId}`, { 
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
       if (!response.ok) throw new Error('נכשל במחיקת הנהג');
       const resData = await response.json();
       setDrivers(resData.drivers);
@@ -216,13 +249,9 @@ export default function AdminDashboard() {
     if (e) e.preventDefault();
     setActionLoading(true);
     try {
-      const adminToken = localStorage.getItem('truckdeal_admin_token') || 'Rami1125';
       const response = await fetch('/api/settings', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-admin-token': adminToken
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify(settings)
       });
       if (!response.ok) throw new Error('עדכון הגדרות נכשל');
@@ -240,7 +269,7 @@ export default function AdminDashboard() {
     try {
       const response = await fetch('/api/settings/test-google-sheet', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           scriptUrl: settings.googleScriptUrl,
           sheetId: settings.googleSheetId
@@ -266,7 +295,10 @@ export default function AdminDashboard() {
   const handleDeleteMove = async (moveId: string) => {
     if (!window.confirm(`האם אתה בטוח שברצונך למחוק את הובלה #${moveId}?`)) return;
     try {
-      const res = await fetch(`/api/moves/${moveId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/moves/${moveId}`, { 
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         setMoves(prev => prev.filter(m => m.id !== moveId));
         if (selectedMove?.id === moveId) setSelectedMove(null);
@@ -283,10 +315,13 @@ export default function AdminDashboard() {
     if (!window.confirm('האם לאפס ולמחוק את כל הזמנות הדמה והבדיקות מהמערכת?')) return;
     setClearDummyLoading(true);
     try {
-      const res = await fetch('/api/moves/clear-dummy', { method: 'POST' });
+      const res = await fetch('/api/moves/clear-dummy', { 
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         const data = await res.json();
-        const refreshRes = await fetch('/api/moves');
+        const refreshRes = await fetch('/api/moves', { headers: getAuthHeaders() });
         const refreshedMoves = await refreshRes.json();
         setMoves(refreshedMoves);
         setSelectedMove(null);
@@ -396,7 +431,7 @@ export default function AdminDashboard() {
     try {
       const response = await fetch(`/api/moves/${moveId}/bids/${bidId}/approve`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: getAuthHeaders()
       });
 
       if (!response.ok) {
@@ -425,13 +460,9 @@ export default function AdminDashboard() {
     setActionSuccess(null);
 
     try {
-      const adminToken = localStorage.getItem('truckdeal_admin_token') || 'Rami1125';
       const response = await fetch(`/api/moves/${moveId}/payment`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-admin-token': adminToken
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify(fields)
       });
 

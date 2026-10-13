@@ -27,6 +27,15 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
   const [showDriveLinks, setShowDriveLinks] = useState<{ [key: string]: boolean }>({});
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
+  const [sessionId] = useState<string>(() => {
+    let saved = sessionStorage.getItem('truk_concierge_session_id');
+    if (!saved) {
+      saved = 'session_' + Math.random().toString(36).substring(2, 10);
+      sessionStorage.setItem('truk_concierge_session_id', saved);
+    }
+    return saved;
+  });
+
   // Load chat history on mount
   useEffect(() => {
     fetchHistory();
@@ -41,7 +50,7 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
 
   const fetchHistory = async () => {
     try {
-      const res = await fetch('/api/concierge/history');
+      const res = await fetch(`/api/concierge/history?sessionId=${sessionId}`);
       if (res.ok) {
         const data = await res.json();
         if (data && data.length > 0) {
@@ -81,7 +90,7 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
       const res = await fetch('/api/concierge/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: textToSend })
+        body: JSON.stringify({ message: textToSend, sessionId })
       });
 
       if (res.ok) {

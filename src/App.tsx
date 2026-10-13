@@ -81,8 +81,8 @@ export default function App() {
       setView('feedback');
       setSelectedMoveId(moveIdParam);
     } else if (viewParam === 'admin') {
-      // Direct URL check: if not logged in, show PIN prompt
-      if (localStorage.getItem('truckdeal_admin_auth') === 'true') {
+      // Direct URL check: if not logged in with server-issued JWT token, prompt for login
+      if (localStorage.getItem('truckdeal_admin_jwt')) {
         setView('admin');
       } else {
         setAdminModalOpen(true);
@@ -136,16 +136,29 @@ export default function App() {
     window.history.pushState({}, '', newUrl.toString());
   };
 
-  const handleAdminPinSubmit = (e: React.FormEvent) => {
+  const handleAdminPinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanPin = adminPinInput.trim();
-    if (cleanPin === '1983' || cleanPin === '2026' || cleanPin === 'TrukDeal2026!') {
-      localStorage.setItem('truckdeal_admin_auth', 'true');
-      setAdminPinError(false);
-      setAdminModalOpen(false);
-      setAdminPinInput('');
-      handleNavigate('admin');
-    } else {
+    if (!cleanPin) return;
+
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: cleanPin })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem('truckdeal_admin_jwt', data.token);
+        localStorage.setItem('truckdeal_admin_auth', 'true');
+        setAdminPinError(false);
+        setAdminModalOpen(false);
+        setAdminPinInput('');
+        handleNavigate('admin');
+      } else {
+        setAdminPinError(true);
+      }
+    } catch {
       setAdminPinError(true);
     }
   };

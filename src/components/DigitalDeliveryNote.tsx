@@ -168,10 +168,19 @@ export default function DigitalDeliveryNote({ move, onSuccess, onBack }: Digital
     };
 
     try {
+      const driverToken = localStorage.getItem('truk_driver_jwt') || localStorage.getItem('truckdeal_admin_jwt') || '';
+      const idempotencyKey = `complete_${move.id}_${Date.now()}`;
       const response = await fetch(`/api/moves/${move.id}/complete`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        headers: { 
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey,
+          ...(driverToken ? { 'Authorization': `Bearer ${driverToken}` } : {})
+        },
+        body: JSON.stringify({
+          ...payload,
+          idempotencyKey
+        })
       });
 
       if (!response.ok) {

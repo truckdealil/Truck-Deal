@@ -72,6 +72,15 @@ export default function FleetManager({ moves, drivers, onMoveUpdated }: FleetMan
     notes: ''
   });
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('truckdeal_admin_jwt') || localStorage.getItem('truckdeal_admin_token') || '';
+    return {
+      'Authorization': `Bearer ${token}`,
+      'x-admin-token': token,
+      'Content-Type': 'application/json'
+    };
+  };
+
   // Fetch initial data
   useEffect(() => {
     fetchFleetData();
@@ -80,9 +89,10 @@ export default function FleetManager({ moves, drivers, onMoveUpdated }: FleetMan
   const fetchFleetData = async () => {
     setLoading(true);
     try {
+      const headers = getAuthHeaders();
       const [trucksRes, shiftsRes] = await Promise.all([
-        fetch('/api/trucks'),
-        fetch('/api/shifts')
+        fetch('/api/trucks', { headers }),
+        fetch('/api/shifts', { headers })
       ]);
 
       if (trucksRes.ok) {
@@ -176,7 +186,7 @@ export default function FleetManager({ moves, drivers, onMoveUpdated }: FleetMan
 
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(truckForm)
       });
 
@@ -201,7 +211,10 @@ export default function FleetManager({ moves, drivers, onMoveUpdated }: FleetMan
   const handleDeleteTruck = async (id: string) => {
     if (!confirm('האם אתה בטוח שברצונך למחוק משאית זו מהצי?')) return;
     try {
-      const res = await fetch(`/api/trucks/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/trucks/${id}`, { 
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
       if (!res.ok) throw new Error('שגיאה במחיקת המשאית');
       const data = await res.json();
       setTrucks(data.trucks);
@@ -229,7 +242,7 @@ export default function FleetManager({ moves, drivers, onMoveUpdated }: FleetMan
     try {
       const res = await fetch(`/api/moves/${selectedMove.id}/assign`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           driverId: assignmentDriverId,
           truckId: assignmentTruckId,
@@ -268,7 +281,7 @@ export default function FleetManager({ moves, drivers, onMoveUpdated }: FleetMan
     try {
       const res = await fetch('/api/shifts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           ...shiftForm,
           driverName: selectedDriver?.fullName || 'נהג',

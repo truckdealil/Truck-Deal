@@ -101,6 +101,9 @@ export default function DriverBidPage({ initialMoveId, onBidSubmitted, onNavigat
       if (localRes.ok) {
         const localData = await localRes.json();
         if (localData.status === 'success' && localData.driver) {
+          if (localData.token) {
+            localStorage.setItem('truk_driver_jwt', localData.token);
+          }
           const session = {
             name: localData.driver.name,
             phone: localData.driver.phone || authPhoneInput,
@@ -172,9 +175,13 @@ export default function DriverBidPage({ initialMoveId, onBidSubmitted, onNavigat
     };
 
     try {
+      const driverToken = localStorage.getItem('truk_driver_jwt') || '';
       const response = await fetch(`/api/moves/${move.id}/bids`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(driverToken ? { 'Authorization': `Bearer ${driverToken}` } : {})
+        },
         body: JSON.stringify(payload)
       });
 
