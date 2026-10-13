@@ -8,7 +8,9 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MoveType, TruckAccess, CraneNeeded, MoveRequest } from '../types';
-
+import trac1Img from '../assets/images/trac.jpg';
+import trac2Img from '../assets/images/trac2.jpg';
+import trac3Img from '../assets/images/trac3.jpg';
 const truckImg = '/src/assets/images/logistic_truck_highway_1784514374249.jpg';
 const techImg = '/src/assets/images/tracking_dashboard_tech_1784514388814.jpg';
 const teamImg = '/src/assets/images/professional_moving_team_1784514402333.jpg';
