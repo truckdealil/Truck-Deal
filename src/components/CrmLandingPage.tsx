@@ -25,7 +25,7 @@ interface CrmLandingPageProps {
 export default function CrmLandingPage({ onNavigateToQuote, onNavigateToDriverRegister }: CrmLandingPageProps) {
   // Hero Carousel State
   const [currentSlide, setCurrentSlide] = useState(0);
-  const slides = [
+const slides = [
     {
       image: truckImg,
       title: "צי משאיות מתקדם בפריסה ארצית",
@@ -42,40 +42,20 @@ export default function CrmLandingPage({ onNavigateToQuote, onNavigateToDriverRe
       description: "הקפדה יתרה על שלמות התכולה, עמידה קפדנית בזמנים וטיפול מקצועי בציוד רגיש"
     },
     {
-      image: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80',
-      title: 'פתרונות שינוע ולוגיסטיקה מתקדמים',
-      description: 'מערך ארצי חכם המנוהל דיגיטלית בסטנדרט העולמי הגבוה ביותר.'
+      image: trac1Img,
+      title: "פתרונות שינוע ולוגיסטיקה מתקדמים",
+      description: "מערך ארצי חכם המנוהל דיגיטלית בסטנדרט העולמי הגבוה ביותר"
     },
     {
-      image: 'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=1200&q=80',
-      title: 'צי משאיות חדיש ובקרת לוויין',
-      description: 'כל הובלה מבוקרת 24/7 ומנווטת בבטחה ישירות אל היעד.'
-    },
-        {
-      image: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80',
-      title: 'צי משאיות חדיש ובקרת לוויין',
-      description: 'כל הובלה מבוקרת 24/7 ומנווטת בבטחה ישירות אל היעד.'
+      image: trac2Img,
+      title: "צי משאיות חדיש ובקרת לוויין",
+      description: "כל הובלה מבוקרת 24/7 ומנווטת בבטחה ישירות אל היעד"
     },
     {
-      image: 'https://images.unsplash.com/photo-1501707315850-fa335db17375?auto=format&fit=crop&w=1200&q=80',
-      title: 'שירות בפריסה ארצית רחבה',
-      description: 'מענה מושלם להובלות דירה יוקרתיות ולוגיסטיקה עסקית מורכבת.'
+      image: trac3Img,
+      title: "שירות בפריסה ארצית רחבה",
+      description: "מענה מושלם להובלות דירה יוקרתיות ולוגיסטיקה עסקית מורכבת"
     }
-    {
-    image: trac1Img,
-    title: "פתרונות שינוע ולוגיסטיקה מתקדמים",
-    description: "מערך ארצי חכם המנוהל דיגיטלית בסטנדרט הגבוה ביותר",
-  },
-  {
-    image: trac2Img,
-    title: "צי משאיות חדיש ובקרת לוויין",
-    description: "כל הובלה מבוקרת 24/7 ומנווטת בבטחה ישירות אל היעד",
-  },
-  {
-    image: trac3Img,
-    title: "שירות בפריסה ארצית רחבה",
-    description: "מענה מושלם להובלות דירה ולוגיסטיקה עסקית מורכבת",
-  }
   ];
 
   useEffect(() => {
