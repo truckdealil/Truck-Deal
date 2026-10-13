@@ -187,14 +187,13 @@ export default function ClientLiveTracking({ moveId, onBackToLanding }: ClientLi
       const approvedBid = getApprovedBid();
       const amountToPay = approvedBid ? approvedBid.bidAmount : 1500;
 
-      // Update backend status
-      const response = await fetch(`/api/moves/${move.id}/payment`, {
+      // Update backend status via checkout endpoint
+      const response = await fetch(`/api/moves/${move.id}/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          paymentStatus: 'paid_full',
-          clientApprovedForBilling: true,
-          status: 'approved_for_driver' // releases the move and unlocks details
+          amountPaid: amountToPay,
+          paymentMethod: 'credit_card'
         }),
       });
 

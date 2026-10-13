@@ -34,11 +34,10 @@ export default function ClientFeedbackPage({ moveId, onBackToLanding }: ClientFe
     const fetchMoveDetails = async () => {
       try {
         setLoading(true);
-        const res = await fetch(`/api/moves`);
+        const res = await fetch(`/api/moves/${moveId}`);
         if (res.ok) {
-          const data: MoveRequest[] = await res.json();
-          const matched = data.find(m => m.id === moveId);
-          if (matched) {
+          const matched: MoveRequest = await res.json();
+          if (matched && matched.id === moveId) {
             setMove(matched);
             // If move already has a feedback rating from driver signature, prefill it
             if (matched.deliveryNote?.feedbackRating) {

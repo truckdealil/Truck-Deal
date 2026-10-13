@@ -66,7 +66,7 @@ export default function AdminDashboard() {
       
       const pollInterval = setInterval(async () => {
         try {
-          const res = await fetch('/api/chats');
+          const res = await fetch('/api/chats', { headers: getAuthHeaders() });
           if (res.ok) {
             const chatData = await res.json();
             setChats(chatData);

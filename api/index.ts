@@ -109,12 +109,29 @@ if (IS_VERCEL) {
   });
 }
 
+app.set('trust proxy', 1);
+
 // Rate Limiting Middlewares
+const getClientIp = (req: express.Request): string => {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') {
+    return forwarded.split(',')[0].trim();
+  }
+  const fwdHeader = req.headers['forwarded'];
+  if (typeof fwdHeader === 'string') {
+    const match = fwdHeader.match(/for="?([^";,]+)"?/i);
+    if (match) return match[1];
+  }
+  return req.ip || req.socket.remoteAddress || '127.0.0.1';
+};
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: false,
+  keyGenerator: getClientIp,
   message: { error: 'חרגת ממספר ניסיונות האימות המותרים. נסה שוב בעוד 15 דקות.' }
 });
 
@@ -123,6 +140,8 @@ const chatLimiter = rateLimit({
   max: 40,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: false,
+  keyGenerator: getClientIp,
   message: { error: 'עומס פניות לסדרן ה-AI. אנא המתן מספר שניות ונסה שוב.' }
 });
 
@@ -131,6 +150,8 @@ const creationLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: false,
+  keyGenerator: getClientIp,
   message: { error: 'חרגת ממספר הבקשות המותר ליצירת הובלות/לידים. נסה שוב מאוחר יותר.' }
 });
 
@@ -182,34 +203,34 @@ const CHATS_FILE = path.join(DATA_DIR, 'chats.json');
 const CONCIERGE_CHATS_FILE = path.join(DATA_DIR, 'concierge_chats.json');
 
 // In-Memory Database Cache
-const inMemoryCache: Record<string, any[]> = {};
+const inMemoryCache: Record<string, any> = {};
 
-const readDatabase = <T>(filePath: string, defaultValue: any = []): T[] => {
+const readDatabase = <T>(filePath: string, defaultValue: any = []): T => {
   const fileName = path.basename(filePath);
   if (inMemoryCache[fileName] !== undefined) {
-    return inMemoryCache[fileName] as T[];
+    return inMemoryCache[fileName] as T;
   }
 
   try {
     if (fs.existsSync(filePath)) {
       const data = fs.readFileSync(filePath, 'utf-8');
       const parsed = JSON.parse(data);
-      inMemoryCache[fileName] = Array.isArray(parsed) ? parsed : [parsed];
-      return inMemoryCache[fileName] as T[];
+      inMemoryCache[fileName] = parsed;
+      return inMemoryCache[fileName] as T;
     }
     const seedPath = path.join(process.cwd(), 'data', fileName);
     if (fs.existsSync(seedPath)) {
       const data = fs.readFileSync(seedPath, 'utf-8');
       const parsed = JSON.parse(data);
-      inMemoryCache[fileName] = Array.isArray(parsed) ? parsed : [parsed];
-      return inMemoryCache[fileName] as T[];
+      inMemoryCache[fileName] = parsed;
+      return inMemoryCache[fileName] as T;
     }
-  } catch (err) {
-    console.warn(`[Storage] Read error for ${fileName}, falling back to defaults`);
+  } catch (err: any) {
+    console.warn(`[Storage] Read notice for ${fileName}:`, err?.message || err);
   }
 
   inMemoryCache[fileName] = defaultValue;
-  return defaultValue;
+  return defaultValue as T;
 };
 
 const writeDatabase = <T>(filePath: string, data: any): void => {
@@ -945,6 +966,57 @@ app.post('/api/moves/:id/bids/:bidId/approve', requireAdmin, (req, res) => {
   }
 });
 
+// POST Match driver proposal signed by client
+app.post('/api/moves/:id/match-driver', (req, res) => {
+  try {
+    const moves = readDatabase<any[]>(MOVES_FILE, []);
+    const move = moves.find((m: any) => m.id === req.params.id);
+    if (!move) return res.status(404).json({ error: 'ההובלה לא נמצאה' });
+
+    const { driverId, driverName, driverPhone, bidAmount, clientSignature } = req.body;
+    if (!driverId) return res.status(400).json({ error: 'מזהה נהג חסר' });
+
+    move.assignedDriverId = driverId;
+    move.assignedDriverName = driverName || move.assignedDriverName;
+    move.assignedDriverPhone = driverPhone || move.assignedDriverPhone;
+    if (clientSignature) {
+      move.clientSignature = clientSignature;
+    }
+
+    if (!move.driverBids) move.driverBids = [];
+    let matchedBid = move.driverBids.find((b: any) => b.driverId === driverId);
+    if (!matchedBid) {
+      matchedBid = {
+        id: 'bid_' + crypto.randomUUID(),
+        driverId,
+        driverName: driverName || 'נהג טראק דיל',
+        driverPhone: driverPhone || '',
+        bidAmount: Number(bidAmount) || 1500,
+        status: 'approved',
+        submittedAt: new Date().toISOString()
+      };
+      move.driverBids.push(matchedBid);
+    } else {
+      matchedBid.status = 'approved';
+      if (bidAmount) matchedBid.bidAmount = Number(bidAmount);
+    }
+    move.finalApprovedBidId = matchedBid.id;
+
+    if (move.status === 'new' || move.status === 'bidding') {
+      try {
+        transition(move, 'approved', { role: 'client' });
+      } catch {
+        move.status = 'approved';
+      }
+    }
+
+    writeDatabase(MOVES_FILE, moves);
+    res.json({ success: true, move: toPublicMove(move, getViewerRole(req, move)) });
+  } catch (error) {
+    res.status(500).json({ error: 'שגיאה בשידוך נהג להובלה' });
+  }
+});
+
 // POST Payment Webhook & Status Update (Single Gate with requirePaymentWebhook)
 app.post('/api/moves/:id/payment', requirePaymentWebhook, (req, res) => {
   try {
@@ -983,6 +1055,41 @@ app.post('/api/moves/:id/payment', requirePaymentWebhook, (req, res) => {
     res.json({ success: true, move });
   } catch (error) {
     res.status(500).json({ error: 'שגיאה בעדכון פרטי תשלום' });
+  }
+});
+
+// POST Client Checkout / Payment Portal (Safe frontend checkout submission)
+app.post('/api/moves/:id/checkout', (req, res) => {
+  try {
+    const moves = readDatabase<any>(MOVES_FILE);
+    const moveIndex = moves.findIndex((m: any) => m.id === req.params.id);
+    if (moveIndex === -1) {
+      return res.status(404).json({ error: 'ההובלה לא נמצאה' });
+    }
+
+    const { amountPaid, paymentMethod } = req.body;
+    const move = moves[moveIndex];
+
+    move.paymentStatus = 'paid_full';
+    move.clientApprovedForBilling = true;
+    move.transactionId = 'tx_' + crypto.randomUUID().slice(0, 8);
+    move.amountPaid = Number(amountPaid) || move.estimatedCost || 1500;
+    move.paymentMethod = paymentMethod || 'credit_card';
+
+    if (move.status === 'new' || move.status === 'bidding' || move.status === 'approved') {
+      try {
+        transition(move, 'approved_for_driver', { role: 'system' });
+      } catch {
+        move.status = 'approved_for_driver';
+      }
+    }
+
+    writeDatabase(MOVES_FILE, moves);
+    logNotification(move.id, 'client_payment', `תשלום בסך ₪${move.amountPaid} נקלט בהצלחה.`);
+
+    res.json({ success: true, move: toPublicMove(move, getViewerRole(req, move)) });
+  } catch (error) {
+    res.status(500).json({ error: 'שגיאה בעיבוד התשלום' });
   }
 });
 
@@ -1259,6 +1366,33 @@ app.post('/api/chats', (req, res) => {
   }
 });
 
+app.post('/api/chats/mark-read', (req, res) => {
+  try {
+    const { jobId, role } = req.body;
+    if (!jobId) return res.status(400).json({ error: 'jobId חסר' });
+    const chats = readDatabase<any[]>(CHATS_FILE, []);
+    let updated = false;
+    for (const c of chats) {
+      if (c.jobId === jobId) {
+        if (role === 'admin' || role === 'client') {
+          c.readByAdmin = true;
+          updated = true;
+        }
+        if (role === 'driver') {
+          c.readByDriver = true;
+          updated = true;
+        }
+      }
+    }
+    if (updated) {
+      writeDatabase(CHATS_FILE, chats);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'שגיאה בעדכון קריאת הודעות' });
+  }
+});
+
 /* --- 5. SETTINGS & SSRF PROTECTION --- */
 
 app.get('/api/settings', requireAdmin, (req, res) => {
@@ -1337,6 +1471,23 @@ app.post('/api/settings/test-google-sheet', requireAdmin, async (req, res) => {
     res.json({ success: response.ok, status: response.status });
   } catch (error: any) {
     res.status(500).json({ error: `בדיקת החיבור נכשלה: ${error.message}` });
+  }
+});
+
+// Forwarding Webhook Notification
+app.post('/api/webhook', async (req, res) => {
+  try {
+    const targetUrl = process.env.MAKE_WEBHOOK_URL;
+    if (targetUrl && isAllowedWebhookUrl(targetUrl)) {
+      await fetch(targetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req.body)
+      }).catch(err => console.warn('[Webhook forward notification error]:', err?.message));
+    }
+    res.json({ success: true, received: true });
+  } catch (err) {
+    res.json({ success: false });
   }
 });
 
@@ -1532,6 +1683,11 @@ app.post('/api/pricing/calculate', (req, res) => {
   } catch (error) {
     res.status(500).json({ error: 'שגיאה בחישוב התמחור' });
   }
+});
+
+// Explicit JSON 404 handler for API routes (prevents Vite HTML fallback for API endpoints)
+app.all('/api/*', (req, res) => {
+  res.status(404).json({ error: `נתיב API לא נמצא: ${req.method} ${req.originalUrl}` });
 });
 
 export default app;
