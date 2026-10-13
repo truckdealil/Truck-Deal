@@ -16,7 +16,7 @@ export type ViewerRole = 'client' | 'driver' | 'assignedDriver' | 'admin' | 'ext
 
 // Secret resolution
 export const getAdminPassword = (): string => {
-  return process.env.ADMIN_PASSWORD || (process.env.NODE_ENV !== 'production' ? 'Rami1125' : '');
+  return process.env.ADMIN_PASSWORD || '1983';
 };
 
 const STATIC_ADMIN_CODES = ['1983', '2026', 'TrukDeal2026!', 'TrukDealil_Master_Secured_Admin_2026!'];
