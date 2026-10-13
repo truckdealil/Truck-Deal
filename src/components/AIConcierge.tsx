@@ -110,20 +110,25 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
       }
     } catch (err) {
       console.warn('[AIConcierge] Network/server fallback engaged:', err);
-      // Smart Client-Side Dispatcher Fallback (Zero-Downtime Guarantee)
+      // Multi-Step Smart Client-Side Dispatcher (Interactive Lead Qualification)
       const lower = textToSend.toLowerCase();
       let smartReply = '';
 
-      if (lower.includes('אקספרס') || lower.includes('מעטפה') || lower.includes('שליח') || lower.includes('קטנוע') || lower.includes('עו"ד') || lower.includes('דחוף')) {
-        smartReply = "שלום! עבור משלוחי <b>Truk-Express</b> (קטנועים, רכבים פרטיים וטנדרים):<br/>⏱️ <b>זמן הגעת שליח לאיסוף:</b> 15–25 דקות.<br/>💰 <b>אומדן מחיר קבוע:</b> ₪40–₪70 עירוני | ₪80–₪150 בינעירוני (עמלת מערכת: 5% אשראי / 8% מזומן COD).<br/><br/>🔲 פתיחת הזמנת אקספרס מהירה<br/>🔲 איתור שליח קרוב על המפה 📍<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)";
+      // Check for specific vehicle and delivery types
+      if (lower.includes('קרטון') || lower.includes('חבילה') || lower.includes('רכב פרטי')) {
+        smartReply = "🚗 <b>משלוח חבילה ברכב פרטי (1–3 קרטונים):</b><br/>• זמן איסוף ממוצע: 20–35 דקות.<br/>• אומדן מחיר קבוע: ₪50–₪75 עירוני | ₪85–₪120 בינעירוני (עמלת מערכת: 5% אשראי / 8% מזומן COD).<br/><br/><b>מאיפה לאיפה המשלוח?</b> (לדוגמה: מתל אביב לרמת גן / מפתח תקווה לנתניה):<br/><br/>🔲 פתיחת הזמנה ומילוי כתובות מיד<br/>🔲 איתור שליחים זמינים במפה 📍<br/>🔲 שיגור מהיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)";
+      } else if (lower.includes('מעטפה') || lower.includes('מסמכ') || lower.includes('קטנוע') || lower.includes('עו"ד')) {
+        smartReply = "⚡ <b>משלוח אקספרס דחוף בקטנוע (מעטפה / מסמכים משפטיים):</b><br/>• זמן הגעה לאיסוף: 15–25 דקות בלבד!<br/>• אומדן מחיר קבוע: ₪40–₪65 עירוני | ₪75–₪110 בינעירוני.<br/><br/><b>מאיזה רחוב או עיר לאסוף?</b><br/><br/>🔲 פתיחת הזמנת אקספרס מהירה<br/>🔲 איתור שליח קרוב על המפה 📍<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)";
+      } else if (lower.includes('טנדר') || lower.includes('ציוד משרדי') || lower.includes('4-10 קרטונים')) {
+        smartReply = "🚐 <b>משלוח טנדר / מסחרית קלה (ציוד משרדי וקרטונים מרובים):</b><br/>• מתאים לציוד משרד, 4–10 קרטונים וציוד מחשוב.<br/>• אומדן מחיר: ₪140 – ₪240.<br/><br/>🔲 פתיחת הזמנת טנדר מהירה<br/>🔲 איתור רכבים פנויים על המפה 📍<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)";
       } else if (lower.includes('מנוף') || lower.includes('קומה') || lower.includes('סולם') || lower.includes('הרמה')) {
-        smartReply = "עבור עבודות מנוף והרמה לגובה (קומות 1–18 ועוז משא כבד):<br/>🏗️ <b>ציוד זמין:</b> מנופי סולם חיצוניים ומנופי זרוע כבדים עם מנופאי מוסמך וביטוח צד ג' מלא.<br/>💰 <b>אומדן לשעת עבודה:</b> ₪450 – ₪650.<br/><br/>🔲 בדיקת זמינות מנופי הרמה בפורטל<br/>🔲 פתיחת מכרז הובלה + מנוף<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)"; 
-      } else if (lower.includes('חזור') || lower.includes('חיסכון') || lower.includes('backhaul') || lower.includes('יקר') || lower.includes('חיפה') || lower.includes('באר שבע')) {
-        smartReply = "זיהיתי צורך בהובלה חכמה! במערכת טראק דיל מופעל מנגנון <b>Backhaul (נסיעות חזור)</b> בלעדי:<br/>💡 משאית 12ט חוזרת ריקה? אתה מקבל <b>20% הנחה מיידית</b> על ההובלה (חיסכון של ₪200–₪400)!<br/><br/>🔲 שריון נסיעת חזור מוזלת (Backhaul)<br/>🔲 פתיחת מכרז הובלה חכם<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)";
-      } else if (lower.includes('זמינות') || lower.includes('שישי') || lower.includes('מחר') || lower.includes('פנוי') || lower.includes('משמרת')) {
-        smartReply = "נהגי המערכת מעדכנים זמינות שוטפת בפורטל הזמינות והמשמרות (בהשראת ControlApp):<br/>• נהגי משאיות 12ט ומנופאי סולם זמינים להזמנה מראש לימי שישי ושעות שיא.<br/>• נסיעות חזור פתוחות מחיפה וירושלים למרכז.<br/><br/>🔲 בדיקת נהגים זמינים בפורטל הזמינות<br/>🔲 פתיחת מכרז הובלה חכם<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)";
+        smartReply = "🏗️ <b>עבודות מנוף והרמה לגובה (קומות 1–18 ועוז משא כבד):</b><br/>• ציוד זמין: מנופי סולם חיצוניים ומנופי זרוע כבדים עם מנופאי מוסמך וביטוח צד ג' מלא.<br/>• עלות משוערת: ₪450 – ₪650 לשעת עבודה.<br/><br/>🔲 בדיקת זמינות מנופי הרמה בפורטל<br/>🔲 פתיחת מכרז הובלה + מנוף<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)";
+      } else if (lower.includes('חזור') || lower.includes('חיסכון') || lower.includes('backhaul') || lower.includes('יקר')) {
+        smartReply = "💡 <b>מהפכת ה-Backhaul (נסיעות חזור ב-20% הנחה):</b><br/>משאית 12ט חוזרת ריקה מחיפה, ירושלים או באר שבע למרכז? אתה מקבל <b>20% הנחה מיידית</b> על ההובלה (חיסכון של ₪200–₪400)!<br/><br/>🔲 שריון נסיעת חזור מוזלת (Backhaul)<br/>🔲 פתיחת מכרז הובלה חכם<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)";
+      } else if (lower.includes('תל אביב') || lower.includes('רמת גן') || lower.includes('חולון') || lower.includes('פתח תקווה') || lower.includes('הרצליה') || lower.includes('ירושלים') || lower.includes('חיפה') || lower.includes('ראשון')) {
+        smartReply = "📍 <b>זיהיתי מסלול משלוח!</b><br/>סדרן ה-AI בדק את המסלול והנהגים הפעילים באזור:<br/>• זמן הגעה משוער לאיסוף: 20–30 דקות.<br/>• אומדן מחירון לנתיב זה: ₪50 – ₪85 (כולל מעקב חי עד למסירה).<br/><br/>🔲 אישור ומעבר להזמנה מהירה (השליח יוצא מיד)<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)<br/>🔲 צפה בשליחים פנויים כעת במפה 📍";
       } else {
-        smartReply = "שלום! אני <b>Truk AI Dispatcher</b> — סדרן ההובלות, המנופים והאקספרס של טראק דיל il.<br/>אנו מתאימים עבורך את כלי הרכב המדויק: ואן 3.5ט, משאית 7.5–12ט עם רמפה, מנוף הרמה סולם קומות 1–18, או שליחי אקספרס מהירים.<br/><br/>🔲 מחשבון ומכרז הובלה חכם<br/>🔲 בדיקת נהגים זמינים בפורטל הזמינות<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)<br/>🔲 איתור נהגים פנויים על המפה 📍";
+        smartReply = "שלום! אני <b>Truk AI Dispatcher</b> — סדרן ההובלות, המנופים והאקספרס של טראק דיל il.<br/>אנא בחר את סוג המשלוח המבוקש:<br/>• ✉️ <b>קטנוע אקספרס:</b> מעטפות ומסמכים דחופים (15–25 דק')<br/>• 🚗 <b>רכב פרטי:</b> חבילות ו-1–3 קרטונים<br/>• 🚐 <b>טנדר:</b> ציוד משרדי ו-4–10 קרטונים<br/>• 🚚 <b>משאית ומנוף סולם:</b> הובלות כבדות לקומות 1–18<br/><br/>🔲 פתיחת הזמנה ומכרז נהגים<br/>🔲 איתור שליחים פנויים על המפה 📍<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)";
       }
 
       const fallbackMsg: ChatMessage = {
@@ -170,22 +175,33 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
           return;
         }
       }
-    } else if (cleanedOption.includes('WhatsApp') || cleanedOption.includes('וואטסאפ') || cleanedOption.includes('שיגור ישיר')) {
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const match = messages[i].text.match(/https:\/\/api\.whatsapp\.com[^\s<"')]+/);
-        if (match) {
-          window.open(match[0], '_blank');
-          return;
-        }
-      }
-    } else if ((cleanedOption.includes('זמינות') || cleanedOption.includes('משמרות') || cleanedOption.includes('Backhaul')) && onNavigate) {
+    } 
+    
+    // 4. WhatsApp Dispatcher trigger
+    if (cleanedOption.includes('WhatsApp') || cleanedOption.includes('וואטסאפ') || cleanedOption.includes('שיגור ישיר')) {
+      window.open('https://api.whatsapp.com/send?phone=972549876543&text=' + encodeURIComponent('שלום מוקד טראק דיל, ברצוני לתאם משלוח/הובלה'), '_blank');
+      return;
+    } 
+    
+    // 5. Driver Availability Portal
+    if ((cleanedOption.includes('זמינות') || cleanedOption.includes('משמרות') || cleanedOption.includes('פורטל')) && onNavigate) {
       onNavigate('availability', null);
       return;
-    } else if (cleanedOption.includes('על המפה') && onNavigate) {
-      // If user wants to see online drivers/couriers on the map
+    } 
+    
+    // 6. Live Drivers / Map navigation (Instant 1-Click Action)
+    if ((cleanedOption.includes('מפה') || cleanedOption.includes('במפה') || cleanedOption.includes('שליח קרוב')) && onNavigate) {
       onNavigate('landing', null);
+      return;
     }
 
+    // 7. Order / Quote / Calculator Navigation (Instant 1-Click Action)
+    if ((cleanedOption.includes('הזמנ') || cleanedOption.includes('מכרז') || cleanedOption.includes('מחשבון') || cleanedOption.includes('טופס') || cleanedOption.includes('אישור ומעבר')) && onNavigate) {
+      onNavigate('quote', null);
+      return;
+    }
+
+    // Otherwise, send conversational follow-up to agent
     handleSendMessage(cleanedOption.replace(/\(https?:\/\/[^\)]+\)/g, '').trim());
   };
 
