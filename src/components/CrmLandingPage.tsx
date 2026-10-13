@@ -15,7 +15,7 @@ const techImg = '/src/assets/images/tracking_dashboard_tech_1784514388814.jpg';
 const teamImg = '/src/assets/images/professional_moving_team_1784514402333.jpg';
 const teamImg = '/src/assets/images/trac.jpg';
 const teamImg = '/src/assets/images/trac2.jpg';
-const teamImg = '/src/assets/images/trac3.jpg
+const teamImg = '/src/assets/images/trac3.jpg';
 ';
 
 interface CrmLandingPageProps {
