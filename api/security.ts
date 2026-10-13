@@ -314,7 +314,7 @@ export const getViewerRole = (req: Request, move?: any): ViewerRole => {
   if (token && adminSecret && safeEq(token, adminSecret)) {
     return 'admin';
   }
-
+ 
   if (token) {
     try {
       const decoded = jwt.verify(token, getJwtSecret()) as any;
