@@ -18,7 +18,7 @@ export type ViewerRole = 'client' | 'driver' | 'assignedDriver' | 'admin' | 'ext
 export const getAdminPassword = (): string => {
   return process.env.ADMIN_PASSWORD || '1983';
 };
-
+ 
 export const verifyAdminPassword = (password: string): boolean => {
   if (!password) return false;
   const configured = process.env.ADMIN_PASSWORD;
