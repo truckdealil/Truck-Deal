@@ -112,7 +112,7 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
       console.warn('[AIConcierge] Network/server fallback engaged:', err);
       // Smart Client-Side Dispatcher Fallback (Zero-Downtime Guarantee)
       const lower = textToSend.toLowerCase();
-      let smartReply = ;
+      let smartReply = '';
 
       if (lower.includes('אקספרס') || lower.includes('מעטפה') || lower.includes('שליח') || lower.includes('קטנוע') || lower.includes('עו"ד') || lower.includes('דחוף')) {
         smartReply = "שלום! עבור משלוחי <b>Truk-Express</b> (קטנועים, רכבים פרטיים וטנדרים):<br/>⏱️ <b>זמן הגעת שליח לאיסוף:</b> 15–25 דקות.<br/>💰 <b>אומדן מחיר קבוע:</b> ₪40–₪70 עירוני | ₪80–₪150 בינעירוני (עמלת מערכת: 5% אשראי / 8% מזומן COD).<br/><br/>🔲 פתיחת הזמנת אקספרס מהירה<br/>🔲 איתור שליח קרוב על המפה 📍<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)";
