@@ -26,13 +26,13 @@ import {
   getPaymentWebhookSecret,
   getJwtSecret,
   MoveStatus
-} from './security.ts';
+} from './security.js';
 
 import { 
   priceHeavy, 
   priceExpress, 
   estimateMoveCost 
-} from './pricing.ts';
+} from './pricing.js';
 
 // Load environment variables
 dotenv.config();
