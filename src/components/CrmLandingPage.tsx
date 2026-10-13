@@ -13,6 +13,10 @@ import { MoveType, TruckAccess, CraneNeeded, MoveRequest } from '../types';
 const truckImg = '/src/assets/images/logistic_truck_highway_1784514374249.jpg';
 const techImg = '/src/assets/images/tracking_dashboard_tech_1784514388814.jpg';
 const teamImg = '/src/assets/images/professional_moving_team_1784514402333.jpg';
+const teamImg = '/src/assets/images/trac.jpg
+const teamImg = '/src/assets/images/trac2.jpg
+const teamImg = '/src/assets/images/trac3.jpg
+';
 
 interface CrmLandingPageProps {
   onNavigateToQuote: () => void;
