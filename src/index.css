@@ -161,3 +161,52 @@ body.light-mode {
   transition: none !important;
 }
 
+
+/* LiveMap (Leaflet) branded styles */
+.td-marker { background: none; border: none; }
+.td-truck, .td-driver-pin { position: relative; display: flex; align-items: center; justify-content: center; }
+.td-truck { width: 40px; height: 40px; }
+.td-truck-core { position: relative; z-index: 1; width: 32px; height: 32px; border-radius: 9999px; background: #ff7f00; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(255,127,0,.45); }
+.td-ping { position: absolute; border-radius: 9999px; animation: td-ping 1.6s cubic-bezier(0,0,.2,1) infinite; }
+.td-ping-orange { inset: 0; background: rgba(255,127,0,.35); border: 1px solid #ff7f00; }
+.td-ping-emerald { width: 30px; height: 30px; top: 3px; left: 3px; background: rgba(16,185,129,.4); border: 1px solid #10b981; }
+@keyframes td-ping { 75%, 100% { transform: scale(1.9); opacity: 0; } }
+.td-route-animated { animation: td-dash 1s linear infinite; }
+@keyframes td-dash { to { stroke-dashoffset: -20; } }
+.td-fs-enter { animation: td-fs-in .28s cubic-bezier(.2,.8,.2,1); }
+@keyframes td-fs-in { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .td-ping, .td-route-animated, .td-fs-enter { animation: none; }
+}
+
+.td-popup .leaflet-popup-content-wrapper { background: #040d1a; color: #fff; border: 1px solid #0c2445; border-radius: 14px; box-shadow: 0 18px 40px rgba(0,0,0,.55); padding: 0; }
+.td-popup .leaflet-popup-content { margin: 0; min-width: 240px; font-family: var(--font-sans); }
+.td-popup .leaflet-popup-tip { background: #040d1a; border: 1px solid #0c2445; }
+.td-popup a.leaflet-popup-close-button { color: #94a3b8; top: 6px; left: 6px; right: auto; }
+.td-pop { padding: 12px 14px; text-align: right; }
+.td-pop-head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; margin: 0 0 8px 18px; border-bottom: 1px solid #0c2445; }
+.td-pop-title { font-size: 14px; font-weight: 800; margin: 0 0 2px; color: #fff; }
+.td-pop-sub { font-size: 11px; color: #94a3b8; margin: 0 0 8px !important; }
+.td-pop-rating { color: #fbbf24; font-weight: 700; font-size: 12px; }
+.td-pop-price { color: #e2e8f0; font-weight: 700; font-size: 12px; }
+.td-mono { font-family: var(--font-mono); }
+.td-badge-online { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 800; color: #10b981; background: rgba(16,185,129,.12); padding: 2px 8px; border-radius: 9999px; }
+.td-badge-move { font-size: 10px; font-weight: 800; color: #ff7f00; background: rgba(255,127,0,.15); padding: 2px 8px; border-radius: 6px; }
+.td-dot { width: 6px; height: 6px; border-radius: 9999px; background: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.25); }
+.td-pop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: #0c2445; border-radius: 10px; padding: 8px; margin-bottom: 10px; }
+.td-pop-grid div { display: flex; flex-direction: column; gap: 1px; }
+.td-pop-grid span { font-size: 9px; color: #94a3b8; }
+.td-pop-grid strong { font-size: 11px; color: #fff; }
+.td-pop-route { display: flex; flex-direction: column; gap: 4px; background: #0c2445; border-radius: 10px; padding: 8px; font-size: 11px; margin-bottom: 8px; }
+.td-pop-route div { display: flex; align-items: flex-start; gap: 6px; }
+.td-pin-a, .td-pin-b { flex-shrink: 0; width: 16px; height: 16px; border-radius: 9999px; color: #fff; font-size: 9px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+.td-pin-a { background: #10b981; }
+.td-pin-b { background: #ff7f00; }
+.td-pop-status { font-size: 11px; font-weight: 700; color: #10b981; margin: 0 0 10px !important; }
+.td-pop-actions { display: flex; gap: 6px; }
+.td-btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; padding: 8px 10px; border-radius: 9px; font-size: 11px; font-weight: 800; text-decoration: none !important; cursor: pointer; border: none; transition: filter .15s; }
+.td-btn:hover { filter: brightness(1.1); }
+.td-btn-call { background: #ff7f00; color: #fff !important; }
+.td-btn-wa { background: #10b981; color: #040d1a !important; }
+.leaflet-container .leaflet-control-attribution { background: rgba(4,13,26,.7); color: #64748b; font-size: 9px; }
+.leaflet-container .leaflet-control-attribution a { color: #94a3b8; }

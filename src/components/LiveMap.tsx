@@ -1,41 +1,56 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { MapPin, Truck, RefreshCw, Layers, ZoomIn, ZoomOut, Search, ExternalLink, Info } from 'lucide-react';
-import { MoveRequest } from '../types';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  RefreshCw,
+  ZoomIn,
+  ZoomOut,
+  Search,
+  Info,
+  Maximize2,
+  Minimize2,
+  Map as MapIcon,
+  Moon,
+  Satellite,
+  Truck,
+  Users,
+  Star,
+  MapPin,
+  Clock,
+  Crosshair,
+} from 'lucide-react';
+import { MoveRequest, DriverProfile } from '../types';
 
-// Extend window for Leaflet
 declare global {
   interface Window {
     L: any;
   }
 }
 
-// Coordinate mapping for major Israeli cities to guarantee fast, bulletproof load
 const ISRAEL_CITIES_COORDS: { [key: string]: [number, number] } = {
   'תל אביב': [32.0853, 34.7818],
   'תל-אביב': [32.0853, 34.7818],
   'ירושלים': [31.7683, 35.2137],
-  'חיפה': [32.7940, 34.9896],
+  'חיפה': [32.794, 34.9896],
   'באר שבע': [31.2529, 34.7915],
   'באר-שבע': [31.2529, 34.7915],
-  'ראשון לציון': [31.9730, 34.7925],
-  'ראשון-לציון': [31.9730, 34.7925],
-  'פתח תקווה': [32.0840, 34.8878],
-  'פתח-תקווה': [32.0840, 34.8878],
+  'ראשון לציון': [31.973, 34.7925],
+  'ראשון-לציון': [31.973, 34.7925],
+  'פתח תקווה': [32.084, 34.8878],
+  'פתח-תקווה': [32.084, 34.8878],
   'אשדוד': [31.8044, 34.6511],
   'נתניה': [32.3215, 34.8532],
-  'חולון': [32.0160, 34.7870],
-  'בני ברק': [32.0800, 34.8300],
-  'בני-ברק': [32.0800, 34.8300],
+  'חולון': [32.016, 34.787],
+  'בני ברק': [32.08, 34.83],
+  'בני-ברק': [32.08, 34.83],
   'רמת גן': [32.0684, 34.8248],
   'רמת-גן': [32.0684, 34.8248],
   'רחובות': [31.8928, 34.8113],
   'אשקלון': [31.6688, 34.5743],
-  'בת ים': [32.0150, 34.7450],
-  'בת-ים': [32.0150, 34.7450],
+  'בת ים': [32.015, 34.745],
+  'בת-ים': [32.015, 34.745],
   'הרצליה': [32.1624, 34.8447],
   'כפר סבא': [32.1714, 34.9083],
   'כפר-סבא': [32.1714, 34.9083],
-  'חדרה': [32.4340, 34.9197],
+  'חדרה': [32.434, 34.9197],
   'רעננה': [32.1848, 34.8713],
   'מודיעין': [31.8998, 35.0074],
   'רמלה': [31.9292, 34.8656],
@@ -54,36 +69,71 @@ const ISRAEL_CITIES_COORDS: { [key: string]: [number, number] } = {
   'בית שמש': [31.7456, 34.9867],
   'הר חברון': [31.4292, 35.0847],
   'קיסריה': [32.5186, 34.9044],
-  'רעננה דרום': [32.1750, 34.8620],
-  'נס ציונה': [31.9290, 34.7983],
-  'קרית מלאכי': [31.7333, 34.7500],
+  'רעננה דרום': [32.175, 34.862],
+  'נס ציונה': [31.929, 34.7983],
+  'קרית מלאכי': [31.7333, 34.75],
   'שדרות': [31.5225, 34.5956],
   'נתיבות': [31.4217, 34.5878],
 };
 
+const DEFAULT_CENTER: [number, number] = [32.0853, 34.7818];
+
 const getCityCoords = (address: string): [number, number] => {
-  const normalized = address.toLowerCase();
+  const normalized = (address || '').toLowerCase();
   for (const city of Object.keys(ISRAEL_CITIES_COORDS)) {
     if (normalized.includes(city.toLowerCase())) {
       return ISRAEL_CITIES_COORDS[city];
     }
   }
-  // Fallback to center of Israel Gush Dan
-  return [32.0853, 34.7818];
+  return DEFAULT_CENTER;
 };
 
-// Deterministic marker offset to avoid overlap when multiple moves are in the same city
+const getCityName = (address: string): string => {
+  const normalized = (address || '').toLowerCase();
+  for (const city of Object.keys(ISRAEL_CITIES_COORDS)) {
+    if (normalized.includes(city.toLowerCase())) return city.replace(/-/g, ' ');
+  }
+  return address?.split(',')[0] || 'מרכז';
+};
+
+// Deterministic offset so markers in the same city don't overlap
 const getOffsetCoords = (id: string, baseCoords: [number, number]): [number, number] => {
   let hash = 0;
   for (let i = 0; i < id.length; i++) {
     hash = id.charCodeAt(i) + ((hash << 5) - hash);
   }
-  const offsetLat = ((hash % 100) / 10000) - 0.005; // -0.005 to 0.005
-  const offsetLng = (((hash >> 8) % 100) / 10000) - 0.005;
+  const offsetLat = (Math.abs(hash % 100) / 10000) - 0.005;
+  const offsetLng = (Math.abs((hash >> 8) % 100) / 10000) - 0.005;
   return [baseCoords[0] + offsetLat, baseCoords[1] + offsetLng];
 };
 
-// Helper to load Leaflet resources dynamically from CDN
+const escapeHtml = (value: unknown): string =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const toInternationalPhone = (phone: string): string => {
+  const digits = (phone || '').replace(/\D/g, '');
+  if (digits.startsWith('972')) return digits;
+  if (digits.startsWith('0')) return `972${digits.slice(1)}`;
+  return digits;
+};
+
+const formatLastSeen = (iso?: string): string => {
+  if (!iso) return 'לא ידוע';
+  const diffMs = Date.now() - new Date(iso).getTime();
+  if (Number.isNaN(diffMs)) return 'לא ידוע';
+  const minutes = Math.max(0, Math.round(diffMs / 60000));
+  if (minutes < 1) return 'עכשיו';
+  if (minutes < 60) return `לפני ${minutes} דק׳`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `לפני ${hours} שע׳`;
+  return new Date(iso).toLocaleDateString('he-IL');
+};
+
 const loadLeafletCSSAndJS = (): Promise<void> => {
   return new Promise((resolve, reject) => {
     if (window.L) {
@@ -99,606 +149,745 @@ const loadLeafletCSSAndJS = (): Promise<void> => {
       document.head.appendChild(link);
     }
 
+    const existing = document.getElementById('leaflet-js-cdn') as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', () => reject(new Error('Leaflet load failed')));
+      return;
+    }
+
     const script = document.createElement('script');
+    script.id = 'leaflet-js-cdn';
     script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
     script.async = true;
-    script.onload = () => {
-      resolve();
-    };
+    script.onload = () => resolve();
     script.onerror = () => reject(new Error('Leaflet load failed'));
     document.body.appendChild(script);
   });
 };
 
+// Esri ArcGIS Online tiles: keyless, no watermark, Hebrew labels for Israel
+const ESRI_BASE = 'https://server.arcgisonline.com/ArcGIS/rest/services';
+type BaseLayerKey = 'streets' | 'dark' | 'satellite';
+
+const BASE_LAYERS: Record<BaseLayerKey, { label: string; base: string; labels?: string; maxNativeZoom: number }> = {
+  streets: {
+    label: 'רחובות',
+    base: `${ESRI_BASE}/World_Street_Map/MapServer/tile/{z}/{y}/{x}`,
+    maxNativeZoom: 19,
+  },
+  dark: {
+    label: 'לילה',
+    base: `${ESRI_BASE}/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
+    labels: `${ESRI_BASE}/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`,
+    maxNativeZoom: 16,
+  },
+  satellite: {
+    label: 'לווין',
+    base: `${ESRI_BASE}/World_Imagery/MapServer/tile/{z}/{y}/{x}`,
+    labels: `${ESRI_BASE}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`,
+    maxNativeZoom: 19,
+  },
+};
+
+const BASE_LAYER_ICONS: Record<BaseLayerKey, React.ComponentType<{ className?: string }>> = {
+  streets: MapIcon,
+  dark: Moon,
+  satellite: Satellite,
+};
+
+const minutesAgo = (m: number) => new Date(Date.now() - m * 60000).toISOString();
+
+// Fallback fleet shown only when no registered drivers are online
+const DEMO_FLEET: (DriverProfile & { lastSeenAt: string; isDemo: true })[] = [
+  { id: 'fleet-demo-1', fullName: 'אבי כהן', phone: '0521234567', truckType: 'משאית סגורה 7.5 טון + רמפה הידראולית', truckPlate: '12-345-67', region: 'תל אביב', rating: 4.9, status: 'active', lastSeenAt: minutesAgo(1), isDemo: true },
+  { id: 'fleet-demo-2', fullName: 'מוחמד חלבי', phone: '0547654321', truckType: 'משאית 12 טון + מנוף קבוע', truckPlate: '45-678-90', region: 'חיפה', rating: 4.8, status: 'active', lastSeenAt: minutesAgo(3), isDemo: true },
+  { id: 'fleet-demo-3', fullName: 'יוסי לוי', phone: '0509876543', truckType: 'איסוזו פלטה פתוחה 5.5 טון', truckPlate: '78-901-23', region: 'ראשון לציון', rating: 4.7, status: 'active', lastSeenAt: minutesAgo(2), isDemo: true },
+  { id: 'fleet-demo-4', fullName: 'דוד אברהם', phone: '0531122334', truckType: 'מסחרית גדולה 3.5 טון (ספרינטר / קרפטר)', truckPlate: '23-456-78', region: 'ירושלים', rating: 5.0, status: 'active', lastSeenAt: minutesAgo(5), isDemo: true },
+  { id: 'fleet-demo-5', fullName: 'רון מזרחי', phone: '0584455667', truckType: 'טריילר פלטה מרכז / פול-טריילר', truckPlate: '56-789-01', region: 'באר שבע', rating: 4.6, status: 'active', lastSeenAt: minutesAgo(8), isDemo: true },
+];
+
+type FleetDriver = DriverProfile & { lastSeenAt?: string; lat?: number; lng?: number; isDemo?: boolean; updatedAt?: string };
+
+const getDriverKey = (d: FleetDriver) => d.id || d.phone || d.fullName;
+
+const getDriverCoords = (d: FleetDriver): [number, number] => {
+  if (typeof d.lat === 'number' && typeof d.lng === 'number') return [d.lat, d.lng];
+  return getOffsetCoords('drv_' + getDriverKey(d), getCityCoords(d.region || 'תל אביב'));
+};
+
+const renderStars = (rating: number) => {
+  const full = Math.round(rating);
+  return '★★★★★'.slice(0, full) + '☆☆☆☆☆'.slice(0, 5 - full);
+};
+
+const pinIcon = (L: any, letter: 'A' | 'B', color: string) =>
+  L.divIcon({
+    className: 'td-marker',
+    iconSize: [30, 40],
+    iconAnchor: [15, 38],
+    popupAnchor: [0, -34],
+    html: `
+      <svg width="30" height="40" viewBox="0 0 30 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M15 1C7.3 1 1 7.2 1 14.9 1 25.4 15 39 15 39s14-13.6 14-24.1C29 7.2 22.7 1 15 1z" fill="${color}" stroke="#ffffff" stroke-width="2"/>
+        <circle cx="15" cy="15" r="8" fill="#040d1a"/>
+        <text x="15" y="19" text-anchor="middle" font-family="Heebo, sans-serif" font-size="11" font-weight="800" fill="#ffffff">${letter}</text>
+      </svg>`,
+  });
+
+const truckIcon = (L: any) =>
+  L.divIcon({
+    className: 'td-marker',
+    iconSize: [40, 40],
+    iconAnchor: [20, 20],
+    popupAnchor: [0, -18],
+    html: `
+      <div class="td-truck">
+        <span class="td-ping td-ping-orange"></span>
+        <span class="td-truck-core">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/>
+            <path d="M15 18H9"/>
+            <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/>
+            <circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>
+          </svg>
+        </span>
+      </div>`,
+  });
+
+const driverIcon = (L: any) =>
+  L.divIcon({
+    className: 'td-marker',
+    iconSize: [36, 46],
+    iconAnchor: [18, 44],
+    popupAnchor: [0, -40],
+    html: `
+      <div class="td-driver-pin">
+        <span class="td-ping td-ping-emerald"></span>
+        <svg width="36" height="46" viewBox="0 0 36 46" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <filter id="tdGlow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          <path filter="url(#tdGlow)" d="M18 2C9.2 2 2 9.1 2 17.9 2 29.9 18 44 18 44s16-14.1 16-26.1C34 9.1 26.8 2 18 2z" fill="#10b981" stroke="#ffffff" stroke-width="2"/>
+          <circle cx="18" cy="18" r="10" fill="#040d1a"/>
+          <g transform="translate(10.5 10.5) scale(0.62)" fill="none" stroke="#10b981" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/>
+            <path d="M15 18H9"/>
+            <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/>
+            <circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>
+          </g>
+        </svg>
+      </div>`,
+  });
+
+const buildDriverPopup = (d: FleetDriver) => {
+  const phone = d.phone || '';
+  const intl = toInternationalPhone(phone);
+  const waText = encodeURIComponent(`שלום ${d.fullName || ''}, כאן מוקד טראק דיל IL. יש לנו הובלה בציר שלך – זמין/ה?`);
+  const rating = Number(d.rating || 5).toFixed(1);
+  return `
+    <div class="td-pop" dir="rtl">
+      <div class="td-pop-head">
+        <span class="td-badge-online"><span class="td-dot"></span>Online 🟢</span>
+        <span class="td-pop-rating">★ ${escapeHtml(rating)}</span>
+      </div>
+      <h4 class="td-pop-title">${escapeHtml(d.fullName || 'נהג צי')}</h4>
+      <p class="td-pop-sub">${escapeHtml(d.truckType || 'משאית הובלה')}</p>
+      <div class="td-pop-grid">
+        <div><span>רישוי</span><strong class="td-mono">${escapeHtml(d.truckPlate || '—')}</strong></div>
+        <div><span>עיר נוכחית</span><strong>${escapeHtml(getCityName(d.region))}</strong></div>
+        <div><span>דגימה אחרונה</span><strong>${escapeHtml(formatLastSeen(d.lastSeenAt || d.updatedAt))}</strong></div>
+        <div><span>טלפון</span><strong class="td-mono">${escapeHtml(phone || '—')}</strong></div>
+      </div>
+      <div class="td-pop-actions">
+        <a class="td-btn td-btn-call" href="tel:${escapeHtml(phone.replace(/[^\d+]/g, ''))}">חיוג ישיר 📞</a>
+        <a class="td-btn td-btn-wa" href="https://wa.me/${escapeHtml(intl)}?text=${waText}" target="_blank" rel="noopener noreferrer">WhatsApp 💬</a>
+      </div>
+    </div>`;
+};
+
 interface LiveMapProps {
   moves: MoveRequest[];
   onSelectMove: (move: MoveRequest) => void;
-  drivers?: any[];
+  drivers?: FleetDriver[];
 }
+
+type SidebarTab = 'moves' | 'drivers';
+type MoveFilter = 'all' | 'transit' | 'bidding' | 'completed';
 
 export default function LiveMap({ moves, onSelectMove, drivers = [] }: LiveMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
-  const markersGroupRef = useRef<any>(null);
-  const polylinesGroupRef = useRef<any>(null);
+  const tileGroupRef = useRef<any>(null);
+  const movesGroupRef = useRef<any>(null);
   const driversGroupRef = useRef<any>(null);
+  const driverMarkersRef = useRef<Map<string, any>>(new Map());
+  const onSelectMoveRef = useRef(onSelectMove);
+  onSelectMoveRef.current = onSelectMove;
+  const movesRef = useRef(moves);
+  movesRef.current = moves;
+
   const [leafletLoaded, setLeafletLoaded] = useState(false);
-  const [mapTheme, setMapTheme] = useState<'dark' | 'light'>('dark');
-  const [selectedRouteFilter, setSelectedRouteFilter] = useState<'all' | 'transit' | 'bidding' | 'completed' | 'online_drivers' | 'express_couriers'>('all');
+  const [loadError, setLoadError] = useState(false);
+  const [baseLayer, setBaseLayer] = useState<BaseLayerKey>('dark');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('moves');
+  const [moveFilter, setMoveFilter] = useState<MoveFilter>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedDriverKey, setSelectedDriverKey] = useState<string | null>(null);
 
-  // Filtering active moves
-  const filteredMoves = moves.filter((m) => {
-    // Basic text search
-    const textMatch = 
-      m.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.originAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.destAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (m.id && m.id.toLowerCase().includes(searchTerm.toLowerCase()));
+  const onlineDrivers: FleetDriver[] = useMemo(() => {
+    const active = (drivers || []).filter((d) => d.status === 'active' || !d.status);
+    return active.length > 0 ? active : DEMO_FLEET;
+  }, [drivers]);
+  const usingDemoFleet = onlineDrivers === DEMO_FLEET;
 
-    if (!textMatch) return false;
+  const term = searchTerm.trim().toLowerCase();
 
-    // Filter by live tracking status on map
-    if (selectedRouteFilter === 'all') return true;
-    if (selectedRouteFilter === 'transit') return m.status === 'approved_for_driver';
-    if (selectedRouteFilter === 'bidding') return m.status === 'bidding';
-    if (selectedRouteFilter === 'completed') return m.status === 'completed';
-    return true;
-  });
+  const filteredMoves = useMemo(
+    () =>
+      moves.filter((m) => {
+        const textMatch =
+          !term ||
+          m.clientName?.toLowerCase().includes(term) ||
+          m.originAddress?.toLowerCase().includes(term) ||
+          m.destAddress?.toLowerCase().includes(term) ||
+          m.id?.toLowerCase().includes(term);
+        if (!textMatch) return false;
+        if (moveFilter === 'transit') return m.status === 'approved_for_driver';
+        if (moveFilter === 'bidding') return m.status === 'bidding';
+        if (moveFilter === 'completed') return m.status === 'completed';
+        return true;
+      }),
+    [moves, term, moveFilter],
+  );
 
-  // Load Leaflet
+  const filteredDrivers = useMemo(
+    () =>
+      onlineDrivers.filter(
+        (d) =>
+          !term ||
+          d.fullName?.toLowerCase().includes(term) ||
+          d.truckPlate?.toLowerCase().includes(term) ||
+          d.truckType?.toLowerCase().includes(term) ||
+          d.region?.toLowerCase().includes(term),
+      ),
+    [onlineDrivers, term],
+  );
+
   useEffect(() => {
     loadLeafletCSSAndJS()
-      .then(() => {
-        setLeafletLoaded(true);
-      })
+      .then(() => setLeafletLoaded(true))
       .catch((err) => {
         console.error('Failed to load map library', err);
+        setLoadError(true);
       });
   }, []);
 
-  // Initialize and update the map tiles and layers
+  // Init map once
   useEffect(() => {
-    if (!leafletLoaded || !mapContainerRef.current) return;
-
+    if (!leafletLoaded || !mapContainerRef.current || mapRef.current) return;
     const L = window.L;
-
-    if (!mapRef.current) {
-      // Map center initialized to Tel Aviv, Gush Dan Israel
-      mapRef.current = L.map(mapContainerRef.current, {
-        center: [32.0853, 34.7818],
-        zoom: 9,
-        zoomControl: false, // Customized buttons
-        attributionControl: false
-      });
-
-      // Layer groups for clean additions and removals
-      markersGroupRef.current = L.layerGroup().addTo(mapRef.current);
-      polylinesGroupRef.current = L.layerGroup().addTo(mapRef.current);
-      driversGroupRef.current = L.layerGroup().addTo(mapRef.current);
-    }
-
-    const map = mapRef.current;
-
-    // Remove existing tile layers to reload theme
-    map.eachLayer((layer: any) => {
-      if (layer instanceof L.TileLayer) {
-        map.removeLayer(layer);
-      }
+    const map = L.map(mapContainerRef.current, {
+      center: DEFAULT_CENTER,
+      zoom: 9,
+      zoomControl: false,
+      attributionControl: true,
     });
+    map.attributionControl.setPrefix(false);
+    map.attributionControl.setPosition('bottomleft');
 
-    // Dark vs Light Theme setup
-    const tileUrl = mapTheme === 'dark' 
-      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    tileGroupRef.current = L.layerGroup().addTo(map);
+    movesGroupRef.current = L.layerGroup().addTo(map);
+    driversGroupRef.current = L.layerGroup().addTo(map);
+    mapRef.current = map;
 
-    L.tileLayer(tileUrl, {
-      maxZoom: 19,
-    }).addTo(map);
+    (window as any).dispatchMapEvent = (moveId: string) => {
+      const match = movesRef.current.find((m) => m.id === moveId);
+      if (match) onSelectMoveRef.current(match);
+    };
 
-    // Initial resize to fit within the viewport
-    setTimeout(() => {
-      map.invalidateSize();
-    }, 200);
+    const ro = new ResizeObserver(() => map.invalidateSize());
+    ro.observe(mapContainerRef.current);
 
     return () => {
-      // Keep map alive unless unmounted
+      ro.disconnect();
+      map.remove();
+      mapRef.current = null;
+      delete (window as any).dispatchMapEvent;
     };
-  }, [leafletLoaded, mapTheme]);
+  }, [leafletLoaded]);
 
-  // Redraw markers and routes when moves or drivers change
+  // Base tile layer
   useEffect(() => {
     if (!leafletLoaded || !mapRef.current) return;
-
     const L = window.L;
-    const map = mapRef.current;
+    const cfg = BASE_LAYERS[baseLayer];
+    const group = tileGroupRef.current;
+    group.clearLayers();
+    const common = {
+      maxZoom: 19,
+      maxNativeZoom: cfg.maxNativeZoom,
+      attribution: 'Tiles &copy; Esri',
+    };
+    L.tileLayer(cfg.base, common).addTo(group);
+    if (cfg.labels) {
+      L.tileLayer(cfg.labels, { ...common, attribution: '', pane: 'overlayPane', zIndex: 250 }).addTo(group);
+    }
+  }, [leafletLoaded, baseLayer]);
 
-    // Clear old markers, paths, and drivers
-    if (markersGroupRef.current) markersGroupRef.current.clearLayers();
-    if (polylinesGroupRef.current) polylinesGroupRef.current.clearLayers();
-    if (driversGroupRef.current) driversGroupRef.current.clearLayers();
+  // Moves: A/B pins, dashed routes, animated trucks
+  useEffect(() => {
+    if (!leafletLoaded || !mapRef.current) return;
+    const L = window.L;
+    const group = movesGroupRef.current;
+    group.clearLayers();
 
-    const bounds = L.latLngBounds();
+    const animated: { marker: any; from: [number, number]; to: [number, number]; t: number }[] = [];
 
     filteredMoves.forEach((move) => {
-      const originBase = getCityCoords(move.originAddress);
-      const destBase = getCityCoords(move.destAddress);
+      const origin = getOffsetCoords(move.id + '_origin', getCityCoords(move.originAddress));
+      const dest = getOffsetCoords(move.id + '_dest', getCityCoords(move.destAddress));
 
-      // Introduce dynamic offset so same-city routes don't completely overlap
-      const originCoords = getOffsetCoords(move.id + '_origin', originBase);
-      const destCoords = getOffsetCoords(move.id + '_dest', destBase);
-
-      bounds.extend(originCoords);
-      bounds.extend(destCoords);
-
-      // 1. Draw Origin Marker (A)
-      const originColor = '#f97316'; // orange-electric
-      const originHtml = `<div class="w-7 h-7 rounded-full bg-orange-electric text-white border-2 border-white flex items-center justify-center font-bold shadow-lg shadow-orange-500/20 text-xs">A</div>`;
-      const originIcon = L.divIcon({
-        html: originHtml,
-        className: 'custom-map-icon',
-        iconSize: [28, 28],
-        iconAnchor: [14, 14]
-      });
-
-      const originMarker = L.marker(originCoords, { icon: originIcon })
-        .addTo(markersGroupRef.current);
-
-      // 2. Draw Destination Marker (B)
-      const destColor = '#10b981'; // emerald-500
-      const destHtml = `<div class="w-7 h-7 rounded-full bg-emerald-500 text-white border-2 border-white flex items-center justify-center font-bold shadow-lg shadow-emerald-500/20 text-xs font-sans">B</div>`;
-      const destIcon = L.divIcon({
-        html: destHtml,
-        className: 'custom-map-icon',
-        iconSize: [28, 28],
-        iconAnchor: [14, 14]
-      });
-
-      const destMarker = L.marker(destCoords, { icon: destIcon })
-        .addTo(markersGroupRef.current);
-
-      // 3. Draw Route Polyline
-      // Color depends on move status
-      let routeColor = '#3b82f6'; // default blue
-      let dashArrayStr = '5, 5';
-      if (move.status === 'completed') {
-        routeColor = '#10b981'; // green
-        dashArrayStr = '';
-      } else if (move.status === 'approved_for_driver') {
-        routeColor = '#f97316'; // orange
-        dashArrayStr = '10, 5';
-      }
-
-      const polyline = L.polyline([originCoords, destCoords], {
-        color: routeColor,
-        weight: 4,
-        dashArray: dashArrayStr,
-        opacity: 0.85
-      }).addTo(polylinesGroupRef.current);
-
-      // 4. Draw Animated Truck Position (Calculated on state)
-      let truckCoords: [number, number] = originCoords;
-      let progressPct = 'מוצא';
-      let statusHebrew = 'ממתין להתחלה';
-
-      if (move.status === 'completed') {
-        truckCoords = destCoords;
-        progressPct = 'הגיע ליעד';
-        statusHebrew = 'הושלם בהצלחה 🏁';
-      } else if (move.status === 'approved_for_driver') {
-        // Truck is in transit, place it at 60% of route
-        truckCoords = [
-          originCoords[0] + (destCoords[0] - originCoords[0]) * 0.6,
-          originCoords[1] + (destCoords[1] - originCoords[1]) * 0.6
-        ];
-        progressPct = 'בדרך (60%)';
-        statusHebrew = 'משאית פעילה בדרך 🚚';
-      } else if (move.status === 'bid_approved') {
-        truckCoords = [
-          originCoords[0] + (destCoords[0] - originCoords[0]) * 0.25,
-          originCoords[1] + (destCoords[1] - originCoords[1]) * 0.25
-        ];
-        progressPct = 'הכנה להעמסה (25%)';
-        statusHebrew = 'הצעה אושרה, בתהליך';
-      }
-
-      const truckHtml = `
-        <div class="relative flex items-center justify-center">
-          <div class="absolute w-10 h-10 bg-orange-electric/30 border border-orange-electric rounded-full animate-ping"></div>
-          <div class="w-8 h-8 rounded-full bg-orange-electric border-2 border-white shadow-xl flex items-center justify-center z-10">
-            <svg class="w-4 h-4 text-white animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10M21 16V10a2 2 0 00-2-2h-3V6" />
-            </svg>
-          </div>
-        </div>
-      `;
-      const truckIcon = L.divIcon({
-        html: truckHtml,
-        className: 'custom-truck-icon',
-        iconSize: [40, 40],
-        iconAnchor: [20, 20]
-      });
-
-      const truckMarker = L.marker(truckCoords, { icon: truckIcon })
-        .addTo(markersGroupRef.current);
-
-      // 5. Add Gorgeous Popup to all elements of this route
-      const approvedBid = move.driverBids.find(b => b.id === move.finalApprovedBidId) || move.driverBids.find(b => b.status === 'approved');
+      const approvedBid =
+        move.driverBids?.find((b) => b.id === move.finalApprovedBidId) || move.driverBids?.find((b) => b.status === 'approved');
       const driverName = approvedBid ? approvedBid.driverName : 'טרם נקבע נהג';
       const bidAmount = approvedBid ? `₪${approvedBid.bidAmount}` : 'ממתין להצעות';
 
-      // Personalized WhatsApp dispatch message (Section 3ג)
-      const targetDriverName = driverName !== 'טרם נקבע נהג' ? driverName : 'מוביל יקר';
-      const truckTypeStr = move.assignedTruckModel || (move.craneNeeded === 'yes' ? 'מנוף סולם / משאית מנוף' : 'משאית סגורה 7.5–12 טון עם רמפה');
-      const netDriverPay = approvedBid ? approvedBid.bidAmount : 1850;
-      const cargoSummary = move.items && move.items.length > 0 ? move.items.map(i => `${i.name} (${i.quantity})`).join(', ') : 'תכולת הובלה מלאה';
-      const waMessage = `שלום ${targetDriverName}, נכנסה הרגע הובלה מותאמת בול לרכב ${truckTypeStr} ולציר הנסיעה שלך:
-📍 מסלול: ${move.originAddress} ➔ ${move.destAddress}
-📦 תכולה: ${cargoSummary}, קומה ${move.floor}
-💵 שכר נטו למוביל: ₪${netDriverPay}
-🔗 לצפייה והגשת הצעה ישירה: https://truck-deal.vercel.app/?view=driver&moveId=${move.id}`;
-      const encodedWaUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(waMessage)}`;
+      let routeColor = '#60a5fa';
+      let dash: string | null = '6 8';
+      let routeClass = '';
+      let statusHebrew = 'מכרז פעיל';
+      let truckProgress: number | null = null;
+
+      if (move.status === 'completed') {
+        routeColor = '#10b981';
+        dash = null;
+        statusHebrew = 'הושלם בהצלחה 🏁';
+      } else if (move.status === 'approved_for_driver') {
+        routeColor = '#ff7f00';
+        dash = '10 10';
+        routeClass = 'td-route-animated';
+        statusHebrew = 'משאית בדרך 🚚';
+        truckProgress = 0.6;
+      } else if (move.status === 'bid_approved') {
+        routeColor = '#ff7f00';
+        dash = '4 8';
+        statusHebrew = 'הצעה אושרה – הכנה להעמסה';
+        truckProgress = 0.15;
+      }
 
       const popupContent = `
-        <div class="p-3 bg-navy-950 text-white rounded-lg text-right font-sans min-w-[250px]" dir="rtl">
-          <div class="flex justify-between items-center pb-2 border-b border-navy-800 mb-2">
-            <span class="text-[10px] bg-orange-electric/20 text-orange-electric font-black px-1.5 py-0.5 rounded">הובלה #${move.id.substring(0,6)}</span>
-            <span class="text-xs font-bold text-gray-300 font-mono">${bidAmount}</span>
+        <div class="td-pop" dir="rtl">
+          <div class="td-pop-head">
+            <span class="td-badge-move">הובלה #${escapeHtml(move.id.substring(0, 6))}</span>
+            <span class="td-pop-price td-mono">${escapeHtml(bidAmount)}</span>
           </div>
-          
-          <h4 class="font-bold text-sm text-white mb-1">לקוח: ${move.clientName}</h4>
-          <p class="text-[10px] text-gray-400 mb-1">📞 טלפון: ${move.clientPhone}</p>
-          <p class="text-[10px] text-orange-electric mb-2 font-bold">🚚 מוביל: ${driverName}</p>
-          
-          <div class="space-y-1 mb-2.5 text-[10px] bg-navy-900/60 p-2 rounded border border-navy-800/80">
-            <div class="flex gap-1 items-start">
-              <span class="text-gray-500 shrink-0">מוצא:</span>
-              <span class="text-white">${move.originAddress}</span>
-            </div>
-            <div class="flex gap-1 items-start">
-              <span class="text-gray-500 shrink-0">יעד:</span>
-              <span class="text-white">${move.destAddress}</span>
-            </div>
+          <h4 class="td-pop-title">${escapeHtml(move.clientName)}</h4>
+          <p class="td-pop-sub">מוביל: ${escapeHtml(driverName)}</p>
+          <div class="td-pop-route">
+            <div><span class="td-pin-a">A</span>${escapeHtml(move.originAddress)}</div>
+            <div><span class="td-pin-b">B</span>${escapeHtml(move.destAddress)}</div>
           </div>
+          <p class="td-pop-status">${escapeHtml(statusHebrew)}</p>
+          <div class="td-pop-actions">
+            <button type="button" class="td-btn td-btn-call" onclick="window.dispatchMapEvent('${escapeHtml(move.id)}')">פתח כרטיס הובלה</button>
+          </div>
+        </div>`;
 
-          <div class="text-[10px] text-emerald-400 font-bold mb-3">
-            📍 סטטוס: ${statusHebrew} (${progressPct})
-          </div>
+      // Glow underlay + dashed route
+      L.polyline([origin, dest], { color: routeColor, weight: 9, opacity: 0.15, interactive: false }).addTo(group);
+      L.polyline([origin, dest], {
+        color: routeColor,
+        weight: 4,
+        opacity: 0.95,
+        dashArray: dash,
+        className: routeClass,
+        lineCap: 'round',
+      })
+        .bindPopup(popupContent, { className: 'td-popup' })
+        .addTo(group);
 
-          <div class="space-y-1.5">
-            <button 
-              onclick="window.dispatchMapEvent('${move.id}')"
-              class="w-full text-center py-1.5 bg-orange-electric hover:bg-orange-600 text-white font-bold rounded text-[10px] cursor-pointer transition-all flex items-center justify-center gap-1"
-            >
-              📊 פתח כרטיס הובלה ניהולי
-            </button>
-            <a 
-              href="${encodedWaUrl}" 
-              target="_blank" 
-              class="w-full text-center py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10px] cursor-pointer transition-all flex items-center justify-center gap-1 text-decoration-none block"
-            >
-              📲 שיגור אישי ישיר ב-WhatsApp
-            </a>
-          </div>
-        </div>
-      `;
+      L.marker(origin, { icon: pinIcon(L, 'A', '#10b981') }).bindPopup(popupContent, { className: 'td-popup' }).addTo(group);
+      L.marker(dest, { icon: pinIcon(L, 'B', '#ff7f00') }).bindPopup(popupContent, { className: 'td-popup' }).addTo(group);
 
-      // Bind popups
-      originMarker.bindPopup(popupContent);
-      destMarker.bindPopup(popupContent);
-      truckMarker.bindPopup(popupContent);
-      polyline.bindPopup(popupContent);
+      if (truckProgress !== null) {
+        const pos: [number, number] = [
+          origin[0] + (dest[0] - origin[0]) * truckProgress,
+          origin[1] + (dest[1] - origin[1]) * truckProgress,
+        ];
+        const truck = L.marker(pos, { icon: truckIcon(L), zIndexOffset: 500 })
+          .bindPopup(popupContent, { className: 'td-popup' })
+          .addTo(group);
+        if (move.status === 'approved_for_driver') animated.push({ marker: truck, from: origin, to: dest, t: truckProgress });
+      }
     });
 
-    // 6. Draw Online Drivers & Express Couriers (Priority radius 25 km & Backhauls)
-    if (selectedRouteFilter === 'all' || selectedRouteFilter === 'online_drivers' || selectedRouteFilter === 'express_couriers') {
-      let onlineDrivers = (drivers || []).filter((d: any) => d.status === 'active' || !d.status);
-      if (selectedRouteFilter === 'express_couriers') {
-        onlineDrivers = onlineDrivers.filter((d: any) => 
-          d.truckType?.includes('קטנוע') || d.truckType?.includes('אופנוע') || d.truckType?.includes('פרטי') || d.truckType?.includes('טנדר') || d.id?.includes('exp')
-        );
-      }
-      onlineDrivers.forEach((driver: any) => {
-        const baseCity = driver.region || 'תל אביב';
-        const baseCoords = getCityCoords(baseCity);
-        const driverCoords = getOffsetCoords('drv_' + (driver.id || driver.phone), baseCoords);
-        bounds.extend(driverCoords);
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion || animated.length === 0) return;
 
-        let iconSymbol = '🚚';
-        let badgeColor = 'bg-emerald-500/20 text-emerald-400';
-        let badgeText = 'נהג Online 🟢';
-        let commissionText = 'עמלת מערכת: 15% ספוט / 10% B2B';
-
-        if (driver.truckType?.includes('קטנוע') || driver.truckType?.includes('אופנוע')) {
-          iconSymbol = '🛵';
-          badgeColor = 'bg-orange-electric/25 text-orange-electric';
-          badgeText = 'שליח קטנוע (Truk-Express) ⚡';
-          commissionText = 'עמלה: 5% אשראי / 8% מזומן (COD)';
-        } else if (driver.truckType?.includes('פרטי') || driver.truckType?.includes('סטיישן')) {
-          iconSymbol = '🚗';
-          badgeColor = 'bg-blue-500/25 text-blue-400';
-          badgeText = 'שליח רכב פרטי (Truk-Express) ⚡';
-          commissionText = 'עמלה: 5% אשראי / 8% מזומן (COD)';
-        } else if (driver.truckType?.includes('טנדר')) {
-          iconSymbol = '🛻';
-          badgeColor = 'bg-purple-500/25 text-purple-300';
-          badgeText = 'שליח טנדר קל (Truk-Express) ⚡';
-          commissionText = 'עמלה: 5% אשראי / 8% מזומן (COD)';
-        } else if (driver.truckType?.includes('מנוף')) {
-          iconSymbol = '🏗️';
-          badgeColor = 'bg-amber-500/25 text-amber-300';
-          badgeText = 'מנופאי מוסמך Online 🏗️';
-          commissionText = 'עמלה: 15% (עוז משא / סולם)';
-        }
-
-        const driverHtml = `
-          <div class="relative flex items-center justify-center cursor-pointer">
-            <div class="absolute w-8 h-8 bg-emerald-400/30 border border-emerald-400 rounded-full animate-ping"></div>
-            <div class="w-7 h-7 rounded-full bg-navy-900 border-2 border-orange-electric shadow-xl flex items-center justify-center text-white text-xs z-10 font-bold">
-              ${iconSymbol}
-            </div>
-          </div>
-        `;
-        const driverIcon = L.divIcon({
-          html: driverHtml,
-          className: 'custom-driver-icon',
-          iconSize: [32, 32],
-          iconAnchor: [16, 16]
-        });
-
-        // Generate personalized direct WhatsApp dispatch for this specific driver/courier
-        const isExpress = driver.truckType?.includes('קטנוע') || driver.truckType?.includes('פרטי') || driver.truckType?.includes('טנדר') || driver.id?.includes('exp');
-        const targetMove = moves.find(m => isExpress ? m.moveType === 'express' : m.status === 'bidding') || moves[0];
-        let directDispatchBtn = '';
-        if (targetMove) {
-          const directMsg = isExpress
-            ? `שלום ${driver.fullName || 'שליח'}, נכנסה הרגע קריאת אקספרס מותאמת בול לרכב ${driver.truckType || 'אקספרס'}:
-📍 מסלול: ${targetMove.originAddress} ➔ ${targetMove.destAddress}
-⚡ סיווג: משלוח אקספרס מיידי
-💵 הצעת מחיר שליח: ₪75 (עמלה: 5% אשראי / 8% מזומן)
-🔒 פרטי האיסוף המלאים נמסרים לאחר אישור.
-🔗 לצפייה ואישור: https://truck-deal.vercel.app/?view=driver&moveId=${targetMove.id}`
-            : `שלום ${driver.fullName || 'מוביל'}, נכנסה הרגע הובלה מותאמת בול לרכב ${driver.truckType || 'משאית הובלות'} ולציר הנסיעה שלך:
-📍 מסלול: ${targetMove.originAddress} ➔ ${targetMove.destAddress}
-📦 תכולה: ${targetMove.items && targetMove.items.length > 0 ? targetMove.items.map(i => `${i.name} (${i.quantity})`).join(', ') : 'תכולת דירה מלאה'}, קומה ${targetMove.floor}
-💵 שכר נטו למוביל: ₪1,850
-🔗 לצפייה והגשת הצעה ישירה: https://truck-deal.vercel.app/?view=driver&moveId=${targetMove.id}`;
-
-          const directWaUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(directMsg)}`;
-          directDispatchBtn = `
-            <a 
-              href="${directWaUrl}" 
-              target="_blank" 
-              class="w-full text-center py-1.5 mt-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10px] cursor-pointer transition-all flex items-center justify-center gap-1 block"
-              style="text-decoration: none;"
-            >
-              📲 שיגור ישיר ב-WhatsApp
-            </a>
-          `;
-        }
-
-        const driverPopup = `
-          <div class="p-3 bg-navy-950 text-white rounded-lg text-right font-sans min-w-[240px]" dir="rtl">
-            <div class="flex justify-between items-center pb-1.5 border-b border-navy-800 mb-2">
-              <span class="text-[10px] ${badgeColor} font-extrabold px-1.5 py-0.5 rounded flex items-center gap-1">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                ${badgeText}
-              </span>
-              <span class="text-xs font-bold text-amber-400">★ ${driver.rating || '5.0'}</span>
-            </div>
-            <h4 class="font-bold text-sm text-white mb-0.5">${driver.fullName || 'ספק מורשה'}</h4>
-            <p class="text-[10px] text-gray-400 mb-1">📞 טלפון: ${driver.phone || 'חסוי עד אישור (PII)'}</p>
-            <div class="p-2 bg-navy-900 rounded border border-navy-800 text-[10px] space-y-1 mb-2">
-              <p class="text-orange-electric font-semibold">${iconSymbol} כלי רכב: ${driver.truckType || 'כלי רכב מותאם'}</p>
-              <p class="text-gray-300">📍 אזור פעילות: ${driver.region || 'מרכז והשרון'}</p>
-              <p class="text-emerald-400 font-bold">🎯 ${commissionText}</p>
-            </div>
-            ${directDispatchBtn}
-          </div>
-        `;
-
-        L.marker(driverCoords, { icon: driverIcon })
-          .bindPopup(driverPopup)
-          .addTo(driversGroupRef.current);
+    const timer = window.setInterval(() => {
+      animated.forEach((a) => {
+        a.t = a.t >= 0.95 ? 0.05 : a.t + 0.0025;
+        a.marker.setLatLng([a.from[0] + (a.to[0] - a.from[0]) * a.t, a.from[1] + (a.to[1] - a.from[1]) * a.t]);
       });
-    }
+    }, 80);
+    return () => window.clearInterval(timer);
+  }, [leafletLoaded, filteredMoves]);
 
-    // Expose click routing callback safely to HTML popup
-    (window as any).dispatchMapEvent = (moveId: string) => {
-      const match = moves.find(m => m.id === moveId);
-      if (match) {
-        onSelectMove(match);
-      }
-    };
-
-    // Auto fit map boundary viewport to include all coordinates with clean padding
-    try {
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 13 });
-    } catch (e) {
-      // Swallowed in case bounds are empty
-    }
-  }, [filteredMoves, leafletLoaded, moves, drivers, onSelectMove, selectedRouteFilter]);
-
-  // Center map on a specific move clicked from the sidebar
-  const flyToMove = (move: MoveRequest) => {
+  // Drivers layer
+  useEffect(() => {
     if (!leafletLoaded || !mapRef.current) return;
-    const originCoords = getCityCoords(move.originAddress);
-    mapRef.current.flyTo(originCoords, 12, {
-      animate: true,
-      duration: 1.5
+    const L = window.L;
+    const group = driversGroupRef.current;
+    group.clearLayers();
+    driverMarkersRef.current.clear();
+
+    filteredDrivers.forEach((d) => {
+      const key = getDriverKey(d);
+      const marker = L.marker(getDriverCoords(d), { icon: driverIcon(L), zIndexOffset: 800 })
+        .bindPopup(buildDriverPopup(d), { className: 'td-popup', minWidth: 240 })
+        .on('click', () => setSelectedDriverKey(key))
+        .addTo(group);
+      driverMarkersRef.current.set(key, marker);
     });
+  }, [leafletLoaded, filteredDrivers]);
+
+  // Fit bounds to the active tab's content
+  useEffect(() => {
+    if (!leafletLoaded || !mapRef.current) return;
+    const L = window.L;
+    const bounds = L.latLngBounds([]);
+    if (sidebarTab === 'moves') {
+      filteredMoves.forEach((m) => {
+        bounds.extend(getCityCoords(m.originAddress));
+        bounds.extend(getCityCoords(m.destAddress));
+      });
+    } else {
+      filteredDrivers.forEach((d) => bounds.extend(getDriverCoords(d)));
+    }
+    if (bounds.isValid()) mapRef.current.fitBounds(bounds, { padding: [60, 60], maxZoom: 12 });
+  }, [leafletLoaded, sidebarTab, filteredMoves, filteredDrivers]);
+
+  // Fullscreen: Esc to exit, lock body scroll, resize map after transition
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setIsFullscreen(false);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => mapRef.current?.invalidateSize({ animate: true }), 320);
+    return () => window.clearTimeout(id);
+  }, [isFullscreen]);
+
+  const flyToMove = (move: MoveRequest) => {
+    if (!mapRef.current) return;
+    const origin = getCityCoords(move.originAddress);
+    const dest = getCityCoords(move.destAddress);
+    mapRef.current.flyToBounds([origin, dest], { padding: [80, 80], maxZoom: 13, duration: 1.4 });
   };
 
-  const zoomIn = () => {
-    if (mapRef.current) mapRef.current.zoomIn();
+  const flyToDriver = useCallback((d: FleetDriver) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const key = getDriverKey(d);
+    setSelectedDriverKey(key);
+    const marker = driverMarkersRef.current.get(key);
+    map.closePopup();
+    map.flyTo(getDriverCoords(d), 14, { duration: 1.4 });
+    map.once('moveend', () => marker?.openPopup());
+  }, []);
+
+  const moveCounts = {
+    all: moves.length,
+    transit: moves.filter((m) => m.status === 'approved_for_driver').length,
+    bidding: moves.filter((m) => m.status === 'bidding').length,
+    completed: moves.filter((m) => m.status === 'completed').length,
   };
 
-  const zoomOut = () => {
-    if (mapRef.current) mapRef.current.zoomOut();
-  };
+  const moveFilterButtons: { key: MoveFilter; label: string }[] = [
+    { key: 'all', label: `הכל (${moveCounts.all})` },
+    { key: 'transit', label: `בדרך (${moveCounts.transit})` },
+    { key: 'bidding', label: `במכרז (${moveCounts.bidding})` },
+    { key: 'completed', label: `הושלמו (${moveCounts.completed})` },
+  ];
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 bg-navy-950 p-1 rounded-2xl">
-      
-      {/* Right Sidebar - Active routes list on Map */}
-      <div className="xl:col-span-1 bg-navy-900 border border-navy-800 rounded-2xl p-4 flex flex-col h-[550px] space-y-4">
-        
-        {/* Search */}
+      {/* Sidebar */}
+      <aside className="xl:col-span-1 bg-[#0c2445]/40 border border-[#0c2445] rounded-2xl p-4 flex flex-col h-[550px] gap-4" aria-label="רשימת הובלות ונהגים">
+        <div role="tablist" aria-label="תצוגת רשימה" className="grid grid-cols-2 gap-1 p-1 bg-navy-950 border border-[#0c2445] rounded-xl">
+          <button
+            role="tab"
+            aria-selected={sidebarTab === 'moves'}
+            onClick={() => setSidebarTab('moves')}
+            className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+              sidebarTab === 'moves' ? 'bg-orange-electric text-white shadow-lg shadow-orange-500/20' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Truck className="w-3.5 h-3.5" />
+            הובלות ומכרזים
+          </button>
+          <button
+            role="tab"
+            aria-selected={sidebarTab === 'drivers'}
+            onClick={() => setSidebarTab('drivers')}
+            className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+              sidebarTab === 'drivers' ? 'bg-emerald-500 text-navy-950 shadow-lg shadow-emerald-500/20' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            {`נהגי צי Online (${onlineDrivers.length})`}
+          </button>
+        </div>
+
         <div className="relative">
-          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" aria-hidden="true" />
+          <label htmlFor="livemap-search" className="sr-only">חיפוש</label>
           <input
+            id="livemap-search"
             type="text"
-            placeholder="חפש הובלה, כתובת, מוביל..."
+            placeholder={sidebarTab === 'moves' ? 'חפש הובלה, כתובת, לקוח...' : 'חפש נהג, רישוי, עיר...'}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pr-9 pl-3 py-2 bg-navy-950 border border-navy-700 rounded-xl text-xs text-white focus:border-orange-electric outline-none"
+            className="w-full pr-9 pl-3 py-2 bg-navy-950 border border-[#0c2445] rounded-xl text-xs text-white placeholder:text-gray-500 focus:border-orange-electric outline-none transition-colors"
           />
         </div>
 
-        {/* Legend buttons filter */}
-        <div className="flex flex-wrap gap-1.5 border-b border-navy-800 pb-3">
-          <button
-            onClick={() => setSelectedRouteFilter('all')}
-            className={`px-2 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${selectedRouteFilter === 'all' ? 'bg-orange-electric text-white' : 'bg-navy-950 text-gray-400 border border-navy-850'}`}
-          >
-            הכל ({moves.length})
-          </button>
-          <button
-            onClick={() => setSelectedRouteFilter('transit')}
-            className={`px-2 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${selectedRouteFilter === 'transit' ? 'bg-orange-electric/25 text-orange-electric border border-orange-electric/30' : 'bg-navy-950 text-gray-400 border border-navy-850'}`}
-          >
-            🚚 בדרך ({moves.filter(m => m.status === 'approved_for_driver').length})
-          </button>
-          <button
-            onClick={() => setSelectedRouteFilter('bidding')}
-            className={`px-2 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${selectedRouteFilter === 'bidding' ? 'bg-blue-500/25 text-blue-400 border border-blue-500/30' : 'bg-navy-950 text-gray-400 border border-navy-850'}`}
-          >
-            ⏳ במכרז ({moves.filter(m => m.status === 'bidding').length})
-          </button>
-          <button
-            onClick={() => setSelectedRouteFilter('completed')}
-            className={`px-2 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${selectedRouteFilter === 'completed' ? 'bg-emerald-500/25 text-emerald-400 border border-emerald-500/30' : 'bg-navy-950 text-gray-400 border border-navy-850'}`}
-          >
-            🏁 הושלמו ({moves.filter(m => m.status === 'completed').length})
-          </button>
-          <button
-            onClick={() => setSelectedRouteFilter('online_drivers')}
-            className={`px-2 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${selectedRouteFilter === 'online_drivers' ? 'bg-emerald-500 text-navy-950 font-black' : 'bg-navy-950 text-emerald-400 border border-emerald-500/30'}`}
-          >
-            🟢 נהגים ({drivers.length})
-          </button>
-          <button
-            onClick={() => setSelectedRouteFilter('express_couriers')}
-            className={`px-2 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${selectedRouteFilter === 'express_couriers' ? 'bg-orange-electric text-white font-black' : 'bg-navy-950 text-orange-electric border border-orange-electric/30'}`}
-          >
-            ⚡ אקספרס ({drivers.filter((d: any) => d.truckType?.includes('קטנוע') || d.truckType?.includes('אופנוע') || d.truckType?.includes('פרטי') || d.truckType?.includes('טנדר') || d.id?.includes('exp')).length})
-          </button>
-        </div>
+        {sidebarTab === 'moves' && (
+          <div className="flex flex-wrap gap-1.5">
+            {moveFilterButtons.map((b) => (
+              <button
+                key={b.key}
+                onClick={() => setMoveFilter(b.key)}
+                aria-pressed={moveFilter === b.key}
+                className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer border ${
+                  moveFilter === b.key
+                    ? 'bg-orange-electric/15 text-orange-electric border-orange-electric/40'
+                    : 'bg-navy-950 text-gray-400 border-[#0c2445] hover:text-white'
+                }`}
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
+        )}
 
-        {/* Scrollable list */}
-        <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 scrollbar-thin scrollbar-thumb-navy-800">
-          {filteredMoves.length === 0 ? (
-            <div className="text-center py-10 text-gray-500 text-xs">
-              אין הובלות תואמות לסינון במפה
-            </div>
-          ) : (
-            filteredMoves.map((move) => {
-              const approvedBid = move.driverBids.find(b => b.id === move.finalApprovedBidId) || move.driverBids.find(b => b.status === 'approved');
-              const driverName = approvedBid ? approvedBid.driverName : 'טרם נקבע';
-              const price = approvedBid ? `₪${approvedBid.bidAmount}` : 'ממתין';
-
-              return (
-                <div
-                  key={move.id}
-                  onClick={() => flyToMove(move)}
-                  className="p-3 bg-navy-950 hover:bg-navy-850 border border-navy-850 hover:border-navy-700 rounded-xl transition-all cursor-pointer text-right space-y-1 group"
-                >
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-white text-xs group-hover:text-orange-electric transition-colors">{move.clientName}</span>
-                    <span className="text-[10px] bg-navy-900 border border-navy-800 px-1.5 py-0.5 rounded text-gray-400 font-mono font-bold">{price}</span>
-                  </div>
-
-                  <p className="text-[10px] text-gray-400 truncate">מוצא: {move.originAddress.split(',')[0]} ➔ יעד: {move.destAddress.split(',')[0]}</p>
-
-                  <div className="flex items-center justify-between text-[9px] pt-1 border-t border-navy-900/60">
-                    <span className="text-gray-500">נהג: <strong className="text-gray-300">{driverName}</strong></span>
-                    <span className={`px-1.5 py-0.2 rounded font-black ${
-                      move.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' :
-                      move.status === 'approved_for_driver' ? 'bg-orange-electric/15 text-orange-electric' :
-                      'bg-blue-500/10 text-blue-400'
-                    }`}>
-                      {move.status === 'completed' ? 'סגור ביעד' :
-                       move.status === 'approved_for_driver' ? 'בדרך' :
-                       'מכרז פעיל'}
+        <div className="flex-1 overflow-y-auto flex flex-col gap-2 pl-1 -ml-1">
+          {sidebarTab === 'moves' ? (
+            filteredMoves.length === 0 ? (
+              <p className="text-center py-10 text-gray-500 text-xs">אין הובלות תואמות לסינון</p>
+            ) : (
+              filteredMoves.map((move) => {
+                const approvedBid =
+                  move.driverBids?.find((b) => b.id === move.finalApprovedBidId) || move.driverBids?.find((b) => b.status === 'approved');
+                const price = approvedBid ? `₪${approvedBid.bidAmount}` : 'ממתין';
+                return (
+                  <button
+                    type="button"
+                    key={move.id}
+                    onClick={() => flyToMove(move)}
+                    className="w-full p-3 bg-navy-950 hover:bg-[#0c2445]/60 border border-[#0c2445] hover:border-orange-electric/40 rounded-xl transition-all cursor-pointer text-right flex flex-col gap-1.5 group"
+                  >
+                    <span className="flex justify-between items-center gap-2">
+                      <span className="font-bold text-white text-xs group-hover:text-orange-electric transition-colors truncate">{move.clientName}</span>
+                      <span className="text-[10px] bg-[#0c2445] px-1.5 py-0.5 rounded text-gray-300 font-mono font-bold shrink-0">{price}</span>
                     </span>
-                  </div>
-                </div>
+                    <span className="flex items-center gap-1.5 text-[10px] text-gray-400 min-w-0">
+                      <span className="w-4 h-4 rounded-full bg-emerald-500 text-white text-[8px] font-black flex items-center justify-center shrink-0">A</span>
+                      <span className="truncate">{move.originAddress.split(',')[0]}</span>
+                      <span className="text-gray-600">{'←'}</span>
+                      <span className="w-4 h-4 rounded-full bg-orange-electric text-white text-[8px] font-black flex items-center justify-center shrink-0">B</span>
+                      <span className="truncate">{move.destAddress.split(',')[0]}</span>
+                    </span>
+                    <span
+                      className={`self-start px-1.5 py-0.5 rounded text-[9px] font-black ${
+                        move.status === 'completed'
+                          ? 'bg-emerald-500/10 text-emerald-400'
+                          : move.status === 'approved_for_driver'
+                            ? 'bg-orange-electric/15 text-orange-electric'
+                            : 'bg-blue-500/10 text-blue-400'
+                      }`}
+                    >
+                      {move.status === 'completed' ? 'סגור ביעד' : move.status === 'approved_for_driver' ? 'בדרך' : 'מכרז פעיל'}
+                    </span>
+                  </button>
+                );
+              })
+            )
+          ) : filteredDrivers.length === 0 ? (
+            <p className="text-center py-10 text-gray-500 text-xs">לא נמצאו נהגים</p>
+          ) : (
+            filteredDrivers.map((d) => {
+              const key = getDriverKey(d);
+              const active = selectedDriverKey === key;
+              const rating = Number(d.rating || 5);
+              return (
+                <button
+                  type="button"
+                  key={key}
+                  onClick={() => flyToDriver(d)}
+                  aria-pressed={active}
+                  className={`w-full p-3 bg-navy-950 border rounded-xl transition-all cursor-pointer text-right flex flex-col gap-1.5 ${
+                    active ? 'border-emerald-500/60 shadow-lg shadow-emerald-500/10' : 'border-[#0c2445] hover:border-emerald-500/40'
+                  }`}
+                >
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="relative flex w-2 h-2 shrink-0">
+                        <span className="absolute inline-flex w-full h-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+                        <span className="relative inline-flex w-2 h-2 rounded-full bg-emerald-500" />
+                      </span>
+                      <span className="font-bold text-white text-xs truncate">{d.fullName}</span>
+                    </span>
+                    <span className="flex items-center gap-0.5 text-[10px] text-amber-400 font-bold shrink-0" aria-label={`דירוג ${rating.toFixed(1)}`}>
+                      <Star className="w-3 h-3 fill-amber-400" aria-hidden="true" />
+                      {rating.toFixed(1)}
+                      <span className="sr-only">{renderStars(rating)}</span>
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[10px] text-gray-400 truncate">
+                    <Truck className="w-3 h-3 text-orange-electric shrink-0" aria-hidden="true" />
+                    <span className="truncate">{d.truckType}</span>
+                  </span>
+                  <span className="flex items-center justify-between gap-2 text-[10px]">
+                    <span className="font-mono text-gray-200 bg-[#0c2445] px-1.5 py-0.5 rounded tracking-wider">{d.truckPlate || '—'}</span>
+                    <span className="flex items-center gap-1 text-gray-400">
+                      <MapPin className="w-3 h-3 text-emerald-400" aria-hidden="true" />
+                      {getCityName(d.region)}
+                    </span>
+                    <span className="flex items-center gap-1 text-gray-500">
+                      <Clock className="w-3 h-3" aria-hidden="true" />
+                      {formatLastSeen(d.lastSeenAt || d.updatedAt)}
+                    </span>
+                  </span>
+                </button>
               );
             })
           )}
         </div>
 
-        {/* Legend Guide Info Card */}
-        <div className="bg-navy-950/60 border border-navy-850 p-2.5 rounded-xl flex items-start gap-2">
-          <Info className="w-4 h-4 text-orange-electric shrink-0 mt-0.5" />
-          <p className="text-[9px] text-gray-400 leading-normal">
-            לחץ על סמן במפה או על הובלה ברשימה כדי להתמקד (Fly-To) ולצפות בחלונית המעקב עם פרטי הלקוח וקישורי הניהול המהירים.
+        <div className="bg-navy-950/60 border border-[#0c2445] p-2.5 rounded-xl flex items-start gap-2">
+          <Info className="w-4 h-4 text-orange-electric shrink-0 mt-0.5" aria-hidden="true" />
+          <p className="text-[10px] text-gray-400 leading-relaxed">
+            {sidebarTab === 'drivers' && usingDemoFleet
+              ? 'מוצג צי לדוגמה – נהגים רשומים ופעילים יופיעו כאן אוטומטית.'
+              : 'לחץ על פריט ברשימה או על סיכה במפה כדי להתמקד ולפתוח את חלונית הפרטים.'}
           </p>
         </div>
-      </div>
+      </aside>
 
-      {/* Left Map Display Container */}
-      <div className="xl:col-span-3 bg-navy-900 border border-navy-800 rounded-2xl relative overflow-hidden h-[550px]">
-        
-        {/* Loading overlay if leaflet is not ready */}
+      {/* Placeholder keeps grid layout stable while the map is fullscreen */}
+      {isFullscreen && <div className="xl:col-span-3 h-[550px] rounded-2xl border border-dashed border-[#0c2445]" aria-hidden="true" />}
+
+      {/* Map */}
+      <section
+        aria-label="מפה חיה"
+        className={`bg-navy-950 border border-[#0c2445] rounded-2xl overflow-hidden ${
+          isFullscreen ? 'fixed inset-2 z-50 shadow-2xl shadow-black/60 td-fs-enter' : 'relative xl:col-span-3 h-[550px]'
+        }`}
+      >
         {!leafletLoaded && (
-          <div className="absolute inset-0 bg-navy-950 flex flex-col items-center justify-center text-white z-50">
-            <RefreshCw className="w-8 h-8 text-orange-electric animate-spin mb-2" />
-            <span className="text-xs text-gray-400">טוען מפת לוגיסטיקה דינמית...</span>
+          <div className="absolute inset-0 bg-navy-950 flex flex-col items-center justify-center text-white z-30 gap-2">
+            <RefreshCw className={`w-8 h-8 text-orange-electric ${loadError ? '' : 'animate-spin'}`} aria-hidden="true" />
+            <span className="text-xs text-gray-400">{loadError ? 'טעינת המפה נכשלה – רענן את הדף' : 'טוען מפת לוגיסטיקה...'}</span>
           </div>
         )}
 
-        {/* Map Container Leaflet mounts here */}
-        <div ref={mapContainerRef} className="w-full h-full z-10" />
+        <div ref={mapContainerRef} className="absolute inset-0 z-10" />
 
-        {/* Top Control Bar floating inside Map overlay */}
-        <div className="absolute top-4 right-4 z-20 flex gap-2">
-          
-          {/* Theme switcher */}
-          <button
-            onClick={() => setMapTheme(mapTheme === 'dark' ? 'light' : 'dark')}
-            className="p-2 bg-navy-950 border border-navy-850 text-gray-300 hover:text-white rounded-xl shadow-xl transition-all cursor-pointer flex items-center gap-1 text-xs font-bold"
+        {/* Top controls */}
+        <div className="absolute top-3 right-3 left-3 z-20 flex items-start justify-between gap-2 pointer-events-none">
+          <div
+            role="radiogroup"
+            aria-label="שכבת מפה"
+            className="pointer-events-auto flex gap-1 p-1 bg-navy-950/90 backdrop-blur-md border border-[#0c2445] rounded-xl shadow-xl"
           >
-            <Layers className="w-3.5 h-3.5 text-orange-electric" />
-            <span>תצוגת {mapTheme === 'dark' ? 'לווין יום' : 'וקטור לילה'}</span>
+            {(Object.keys(BASE_LAYERS) as BaseLayerKey[]).map((key) => {
+              const Icon = BASE_LAYER_ICONS[key];
+              const active = baseLayer === key;
+              return (
+                <button
+                  key={key}
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setBaseLayer(key)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                    active ? 'bg-orange-electric text-white' : 'text-gray-300 hover:text-white hover:bg-[#0c2445]'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {BASE_LAYERS[key].label}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsFullscreen((v) => !v)}
+            aria-label={isFullscreen ? 'יציאה ממסך מלא' : 'הרחבה למסך מלא'}
+            title={isFullscreen ? 'יציאה ממסך מלא (Esc)' : 'מסך מלא'}
+            className="pointer-events-auto flex items-center gap-1.5 px-3 py-2 bg-navy-950/90 backdrop-blur-md border border-[#0c2445] hover:border-orange-electric/60 text-white rounded-xl shadow-xl transition-all cursor-pointer text-[11px] font-bold"
+          >
+            {isFullscreen ? <Minimize2 className="w-4 h-4 text-orange-electric" /> : <Maximize2 className="w-4 h-4 text-orange-electric" />}
+            <span className="hidden sm:inline">{isFullscreen ? 'מזער' : 'מסך מלא'}</span>
           </button>
         </div>
 
-        {/* Left Control Bar Zoom Buttons */}
-        <div className="absolute bottom-4 left-4 z-20 flex flex-col gap-1">
+        {/* Zoom + recenter */}
+        <div className="absolute bottom-8 left-3 z-20 flex flex-col gap-1">
           <button
-            onClick={zoomIn}
-            className="w-8 h-8 bg-navy-950 border border-navy-850 text-gray-300 hover:text-white rounded-lg shadow-xl transition-all cursor-pointer flex items-center justify-center"
+            type="button"
+            onClick={() => mapRef.current?.zoomIn()}
+            aria-label="הגדל"
+            className="w-9 h-9 bg-navy-950/90 border border-[#0c2445] text-gray-300 hover:text-white rounded-lg shadow-xl transition-all cursor-pointer flex items-center justify-center"
           >
             <ZoomIn className="w-4 h-4" />
           </button>
           <button
-            onClick={zoomOut}
-            className="w-8 h-8 bg-navy-950 border border-navy-850 text-gray-300 hover:text-white rounded-lg shadow-xl transition-all cursor-pointer flex items-center justify-center"
+            type="button"
+            onClick={() => mapRef.current?.zoomOut()}
+            aria-label="הקטן"
+            className="w-9 h-9 bg-navy-950/90 border border-[#0c2445] text-gray-300 hover:text-white rounded-lg shadow-xl transition-all cursor-pointer flex items-center justify-center"
           >
             <ZoomOut className="w-4 h-4" />
           </button>
+          <button
+            type="button"
+            onClick={() => mapRef.current?.flyTo(DEFAULT_CENTER, 9, { duration: 1.2 })}
+            aria-label="מרכז מפה"
+            className="w-9 h-9 bg-navy-950/90 border border-[#0c2445] text-gray-300 hover:text-white rounded-lg shadow-xl transition-all cursor-pointer flex items-center justify-center"
+          >
+            <Crosshair className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* Map Watermark branding overlay */}
-        <div className="absolute bottom-4 right-4 z-20 bg-navy-950/80 backdrop-blur-md px-3 py-1.5 rounded-lg border border-navy-850 text-[9px] text-gray-400 font-mono flex items-center gap-1 select-none">
-          <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" />
-          <span>TRUK DEALIL LIVE TRACKING ENGINE • ISRAEL LAYER</span>
+        {/* Legend */}
+        <div className="absolute bottom-3 right-3 z-20 bg-navy-950/85 backdrop-blur-md px-3 py-2 rounded-lg border border-[#0c2445] text-[10px] text-gray-300 flex flex-wrap items-center gap-x-3 gap-y-1 select-none max-w-[calc(100%-5rem)]">
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />איסוף A</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-orange-electric" />יעד B</span>
+          <span className="flex items-center gap-1"><span className="w-4 border-t-2 border-dashed border-orange-electric" />בדרך</span>
+          <span className="flex items-center gap-1">
+            <span className="relative flex w-2.5 h-2.5">
+              <span className="absolute inline-flex w-full h-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+              <span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-emerald-500" />
+            </span>
+            נהג Online
+          </span>
+          <span className="hidden md:inline font-mono text-gray-500">TRUK DEALIL LIVE</span>
         </div>
-
-      </div>
-
+      </section>
     </div>
   );
 }
