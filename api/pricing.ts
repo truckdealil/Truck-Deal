@@ -190,3 +190,182 @@ export function estimateMoveCost(params: {
 
   return { minIls: min, maxIls: max, breakdown };
 }
+
+/* ======================================================================
+   DETERMINISTIC CACHING & FAST LOOKUP TABLES
+   ====================================================================== */
+
+export interface CorridorRate {
+  id: string;
+  fromCity: string;
+  toCity: string;
+  distanceKm: number;
+  expressEnvelopeNetIls: number;
+  expressParcelNetIls: number;
+  expressVanNetIls: number;
+  freightSmallNetIls: number;
+  freightMediumNetIls: number;
+  backhaulEligible: boolean;
+}
+
+export const STANDARD_CORRIDORS: Record<string, CorridorRate> = {
+  'telaviv_jerusalem': {
+    id: 'telaviv_jerusalem',
+    fromCity: 'תל אביב',
+    toCity: 'ירושלים',
+    distanceKm: 65,
+    expressEnvelopeNetIls: 80,
+    expressParcelNetIls: 110,
+    expressVanNetIls: 220,
+    freightSmallNetIls: 1200,
+    freightMediumNetIls: 2200,
+    backhaulEligible: true
+  },
+  'telaviv_haifa': {
+    id: 'telaviv_haifa',
+    fromCity: 'תל אביב',
+    toCity: 'חיפה',
+    distanceKm: 95,
+    expressEnvelopeNetIls: 95,
+    expressParcelNetIls: 130,
+    expressVanNetIls: 260,
+    freightSmallNetIls: 1400,
+    freightMediumNetIls: 2500,
+    backhaulEligible: true
+  },
+  'telaviv_beersheba': {
+    id: 'telaviv_beersheba',
+    fromCity: 'תל אביב',
+    toCity: 'באר שבע',
+    distanceKm: 110,
+    expressEnvelopeNetIls: 110,
+    expressParcelNetIls: 150,
+    expressVanNetIls: 300,
+    freightSmallNetIls: 1600,
+    freightMediumNetIls: 2800,
+    backhaulEligible: true
+  },
+  'gush_dan_urban': {
+    id: 'gush_dan_urban',
+    fromCity: 'גוש דן',
+    toCity: 'גוש דן',
+    distanceKm: 10,
+    expressEnvelopeNetIls: 50,
+    expressParcelNetIls: 65,
+    expressVanNetIls: 160,
+    freightSmallNetIls: 800,
+    freightMediumNetIls: 1800,
+    backhaulEligible: false
+  }
+};
+
+export const EXPRESS_LOOKUP_MATRIX = {
+  envelope: {
+    type: 'envelope',
+    label: 'מעטפה משפטית / מסמכים דחופים',
+    vehicle: 'קטנוע / אופנוע בלבד',
+    urbanRange: '₪40 - ₪70',
+    intercityRange: '₪80 - ₪120',
+    typicalUrbanIls: 55,
+    typicalIntercityIls: 95
+  },
+  parcel: {
+    type: 'parcel',
+    label: 'חבילה / 1-3 קרטונים / דוגמיות',
+    vehicle: 'רכב פרטי / סטיישן',
+    urbanRange: '₪50 - ₪80',
+    intercityRange: '₪85 - ₪140',
+    typicalUrbanIls: 65,
+    typicalIntercityIls: 110
+  },
+  van: {
+    type: 'van',
+    label: 'ציוד משרדי / 4-10 קרטונים',
+    vehicle: 'טנדר / מסחרית קטנה',
+    urbanRange: '₪140 - ₪200',
+    intercityRange: '₪220 - ₪350',
+    typicalUrbanIls: 160,
+    typicalIntercityIls: 260
+  }
+};
+
+/**
+ * Fast deterministic lookup matching before LLM invocation.
+ */
+export function matchDeterministicPricing(query: string, opts?: { paymentMethod?: 'card' | 'cash'; isBackhaul?: boolean }): {
+  matched: boolean;
+  track: 'express' | 'freight';
+  vehicle: string;
+  estimatedPrice: string;
+  platformFee: string;
+  notes: string;
+  breakdown?: any;
+} | null {
+  const q = query.toLowerCase();
+  const paymentMethod = opts?.paymentMethod || (q.includes('מזומן') || q.includes('cod') ? 'cash' : 'card');
+  const feePct = paymentMethod === 'card' ? 5 : 8;
+
+  // Track A: Express Envelope
+  if (q.includes('מעטפה') || q.includes('משפטי') || q.includes('בית משפט') || q.includes('עו"ד') || q.includes('מסמכ')) {
+    const isIntercity = q.includes('חיפה') || q.includes('ירושלים') || q.includes('באר שבע') || q.includes('נתניה');
+    const baseNet = isIntercity ? 95 : 55;
+    const priced = priceExpress(baseNet * 100, paymentMethod);
+    return {
+      matched: true,
+      track: 'express',
+      vehicle: 'קטנוע / אופנוע שליחויות בלבד (הגעה תוך 15-25 דק\')',
+      estimatedPrice: `₪${priced.totalClientIls}`,
+      platformFee: `${feePct}% (${paymentMethod === 'card' ? 'אשראי / Net 30' : 'מזומן COD בקבלה'})`,
+      notes: isIntercity ? 'משלוח בין-עירוני קרוב' : 'משלוח עירוני מהיר',
+      breakdown: priced
+    };
+  }
+
+  // Track A: Express Parcel 1-3 boxes
+  if (q.includes('חבילה') || q.includes('קרטון') || q.includes('דוגמי') || q.includes('1-3') || q.includes('רכב פרטי')) {
+    const isIntercity = q.includes('חיפה') || q.includes('ירושלים') || q.includes('באר שבע') || q.includes('צפון') || q.includes('דרום');
+    const baseNet = isIntercity ? 110 : 65;
+    const priced = priceExpress(baseNet * 100, paymentMethod);
+    return {
+      matched: true,
+      track: 'express',
+      vehicle: 'רכב פרטי / סטיישן (מתאים ל-1 עד 3 קרטונים)',
+      estimatedPrice: `₪${priced.totalClientIls}`,
+      platformFee: `${feePct}% (${paymentMethod === 'card' ? 'אשראי / Net 30' : 'מזומן COD'})`,
+      notes: isIntercity ? 'משלוח חבילה בין-עירוני' : 'משלוח חבילה עירוני',
+      breakdown: priced
+    };
+  }
+
+  // Track A: Small Van 4-10 cartons
+  if (q.includes('טנדר') || q.includes('4-10') || q.includes('מחשוב') || (q.includes('ציוד') && q.includes('משרד') && !q.includes('דירה'))) {
+    const baseNet = 160;
+    const priced = priceExpress(baseNet * 100, paymentMethod);
+    return {
+      matched: true,
+      track: 'express',
+      vehicle: 'טנדר / מסחרית קלה (4-10 קרטונים וציוד משרד)',
+      estimatedPrice: `₪${priced.totalClientIls}`,
+      platformFee: `${feePct}%`,
+      notes: 'משלוח טנדר מהיר',
+      breakdown: priced
+    };
+  }
+
+  // Track B: Crane lookup
+  if (q.includes('מנוף סולם') || q.includes('מנוף הרמה') || (q.includes('סולם') && q.includes('קומה'))) {
+    const priced = priceHeavy(40000, opts?.isBackhaul ? 'backhaul' : 'spot');
+    return {
+      matched: true,
+      track: 'freight',
+      vehicle: 'מנוף הרמה סולם (קומות 1-18, עד 400 ק"ג)',
+      estimatedPrice: `₪${priced.totalIls} לשעה ראשונה`,
+      platformFee: opts?.isBackhaul ? '10% (Backhaul 20% הנחה)' : '15% ספוט',
+      notes: 'כולל מנופאי מוסמך וביטוח צד ג\' מלא',
+      breakdown: priced
+    };
+  }
+
+  return null;
+}
+
