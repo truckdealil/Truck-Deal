@@ -249,7 +249,14 @@ const writeDatabase = <T>(filePath: string, data: any): void => {
 let ai: GoogleGenAI | null = null;
 if (process.env.GEMINI_API_KEY) {
   try {
-    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    ai = new GoogleGenAI({ 
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
     console.log('Gemini AI SDK initialized successfully');
   } catch (err) {
     console.error('Failed to initialize Gemini AI SDK:', err);
@@ -257,12 +264,16 @@ if (process.env.GEMINI_API_KEY) {
 }
 
 // Call Gemini with Fallback
-const callGeminiWithFallback = async (contents: string, primaryModel: string = 'gemini-2.5-flash', fallbackModel: string = 'gemini-2.0-flash') => {
+const callGeminiWithFallback = async (
+  contents: string, 
+  primaryModel: string = 'gemini-3.8-flash', 
+  fallbackModel: string = 'gemini-3.1-flash-lite'
+) => {
   if (!ai) {
     throw new Error('Gemini client not initialized');
   }
 
-  const generateWithTimeout = async (model: string, timeoutMs: number = 8000) => {
+  const generateWithTimeout = async (model: string, timeoutMs: number = 10000) => {
     let timeoutId: any;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => reject(new Error(`Gemini timeout after ${timeoutMs}ms`)), timeoutMs);
@@ -281,10 +292,10 @@ const callGeminiWithFallback = async (contents: string, primaryModel: string = '
   };
 
   try {
-    return await generateWithTimeout(primaryModel, 8000);
+    return await generateWithTimeout(primaryModel, 10000);
   } catch (err: any) {
     console.warn(`Primary Gemini model (${primaryModel}) failed:`, err?.message || err);
-    return await generateWithTimeout(fallbackModel, 6000);
+    return await generateWithTimeout(fallbackModel, 10000);
   }
 };
 
