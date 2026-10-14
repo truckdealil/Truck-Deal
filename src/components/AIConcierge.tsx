@@ -160,7 +160,9 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
         smartReply = `${greeting} 🚐 <b>מסלול א׳: משלוח טנדר / מסחרית קלה (ציוד משרדי וקרטונים מרובים):</b><br/>• מתאים לציוד משרד, 4–10 קרטונים וציוד מחשוב.<br/>• אומדן מחיר: ₪140 – ₪240.<br/><br/><b>האם נדרש סבל לסחיבת הציוד או פריקה עצמית?</b><br/><br/>🔲 פתיחת הזמנת טנדר מהירה<br/>🔲 איתור רכבים פנויים על המפה 📍<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)`;
       } else if (lower.includes('מנוף') || lower.includes('קומה') || lower.includes('סולם') || lower.includes('הרמה')) {
         smartReply = `${greeting} 🏗️ <b>מסלול ב׳: עבודות מנוף והרמה לגובה (קומות 1–18 ועוז משא כבד):</b><br/>• ציוד זמין: מנופי סולם חיצוניים ומנופי זרוע כבדים (12ט–575ט) עם מנופאי מוסמך וביטוח צד ג' מלא.<br/>• תעריף מנוף סולם: ₪350 – ₪450 לשעה (קומות 1–18).<br/><br/><b>לאיזו קומה נדרשת ההרמה והאם יש חנייה למשאית המנוף?</b><br/><br/>🔲 בדיקת זמינות מנופי הרמה בפורטל<br/>🔲 פתיחת מכרז הובלה + מנוף<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)`;
-      } else if (lower.includes('חזור') || lower.includes('חיסכון') || lower.includes('backhaul') || lower.includes('יקר')) {
+      } else if (lower.includes('טיפ') || lower.includes('חיסכון') || lower.includes('להוזיל') || lower.includes('זול') || lower.includes('הנחה')) {
+        smartReply = `${greeting} ✨ <b>טיפ מסדרן טראק דיל (איך מוזילים את עלות ההובלה ב-20% עד 35%):</b><br/><br/>1. <b>The Self-Transport Hack (רכב פרטי מוזיל עלויות):</b><br/>חלק מהסכום הכולל של ההובלה מושפע ישירות מנפח הארגזים. אם יש לך ארגזים קטנים, ביגוד, מחשב אישי או חפצים יקרי ערך — העברה שלהם ברכב הפרטי שלכם תצמצם את נפח המשאית ותוזיל משמעותית את הצעת המובילים.<br/><br/>2. <b>Accurate Sizing & No Extra Fees:</b><br/>בחירת משאית מדויקת מונעת מצב שבו מוביל מגיע עם משאית גדולה מדי (שעולה יותר בסולר) או קטנה מדי שמצריכה נגלה שנייה.<br/><br/>3. <b>The 2-3 Photos Rule (העלאת תמונות בכפתור 🧷):</b><br/>מובילים לוקחים מכרזים ברצינות רבה יותר ונותנים הצעות נטו חדות כשיש להם 2–3 תמונות ברורות מזווית טובה של הרהיטים והמעברים. זה מבטל הפתעות ותוספות מחיר ביום ההובלה.<br/><br/><b>באיזה מסלול תרצה שנתמקד כעת כדי לחסוך בעלויות?</b><br/><br/>🔲 בדיקת נסיעות חזור Backhaul (20% הנחה)<br/>🔲 פתיחת מכרז חכם עם תמונות<br/>🔲 מסלול א׳: שליחות קלה (קטנוע / רכב פרטי)<br/>🔲 מסלול ב׳: הובלה כבדה / דירה`;
+      } else if (lower.includes('חזור') || lower.includes('backhaul') || lower.includes('יקר')) {
         smartReply = `${greeting} 💡 <b>מהפכת ה-Backhaul (נסיעות חזור ב-20% הנחה):</b><br/>משאית 12ט חוזרת ריקה מחיפה, ירושלים או באר שבע למרכז? אתה מקבל <b>20% הנחה מיידית</b> על ההובלה (חיסכון של ₪200–₪400)!<br/><br/><b>לאיזה יעד ומתי נוח לך לתאם את נסיעת החזור?</b><br/><br/>🔲 שריון נסיעת חזור מוזלת (Backhaul)<br/>🔲 פתיחת מכרז הובלה חכם<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)`;
       } else if (lower.includes('תל אביב') || lower.includes('רמת גן') || lower.includes('חולון') || lower.includes('פתח תקווה') || lower.includes('הרצליה') || lower.includes('ירושלים') || lower.includes('חיפה') || lower.includes('ראשון')) {
         smartReply = `${greeting} 📍 <b>זיהיתי מסלול משלוח!</b><br/>סדרן ה-AI בדק את המסלול והנהגים הפעילים באזור:<br/>• זמן הגעה משוער לאיסוף: 20–30 דקות.<br/>• אומדן מחירון לנתיב זה: ₪50 – ₪85 (כולל מעקב חי עד למסירה).<br/><br/><b>האם תרצה להזמין שליח לקריאה מיידית?</b><br/><br/>🔲 אישור ומעבר להזמנה מהירה (השליח יוצא מיד)<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)<br/>🔲 צפה בשליחים פנויים כעת במפה 📍`;
@@ -499,6 +501,12 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
                 className="px-2.5 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 rounded-lg text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1"
               >
                 <span>🚚 הובלה ומנוף סולם</span>
+              </button>
+              <button
+                onClick={() => handleSendMessage('טיפים לחיסכון במחיר ההובלה ✨')}
+                className="px-2.5 py-1 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 rounded-lg text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1"
+              >
+                <span>✨ טיפים לחיסכון</span>
               </button>
               <button
                 onClick={() => handleSendMessage('איתור שליח קרוב על המפה 📍')}
