@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Sparkles, MessageSquare, X, Send, Bot, RefreshCw, Eye, EyeOff, 
   CheckCircle2, ChevronDown, Award, Maximize2, Minimize2, CreditCard, 
-  ShieldCheck, Wrench, Navigation, Zap, Truck
+  ShieldCheck, Wrench, Navigation, Zap, Truck, User, Globe, Edit3, Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -27,6 +27,14 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
   const [showDriveLinks, setShowDriveLinks] = useState<{ [key: string]: boolean }>({});
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
+  // Client identification & Language State
+  const [clientName, setClientName] = useState<string>(() => {
+    return localStorage.getItem('truk_client_name') || '';
+  });
+  const [nameInput, setNameInput] = useState('');
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState<'he' | 'en' | 'ru' | 'ar'>('he');
+
   const [sessionId] = useState<string>(() => {
     let saved = sessionStorage.getItem('truk_concierge_session_id');
     if (!saved) {
@@ -48,6 +56,11 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
     }
   }, [messages, loading]);
 
+  const getInitialWelcomeText = (name: string) => {
+    const greeting = name ? `שלום ${name}!` : 'שלום!';
+    return `${greeting} אני <b>טראק-סדרן | Truk AI Dispatcher & Express Controller</b> — מנוע הלוגיסטיקה, התמחור בזמן אמת ובקר השיגור של "טראק דיל il".<br/><br/>המערכת פועלת בשני מסלולים ייעודיים:<br/>⚡ <b>מסלול א׳: שליחויות אקספרס (Truk-Express)</b> — קטנוע למעטפות (₪40–₪70 עירוני, הגעה 15-25 דק׳), רכב פרטי לחבילות (₪80–₪150 בינעירוני), וטנדר (עמלה: 5% אשראי / Net 30 | 8% מזומן COD).<br/>🚛 <b>מסלול ב׳: הובלות כבדות, דירות ומנופים</b> — מסחריות 3.5ט, משאיות 7.5–12ט עם רמפה, מנוף סולם 1–18 (₪350–₪450 לשעה) ומנופי זרוע כבדים (עמלה: 15% ספוט / 10% B2B; נוסחה: עלות נטו + עמלה * 1.18).<br/><br/><b>באיזה מסלול תרצה שנתמקד כעת?</b><br/>🔲 מסלול א׳: שליחויות אקספרס (קטנוע / רכב פרטי / טנדר)<br/>🔲 מסלול ב׳: הובלות כבדות, דירות ומנופי הרמה<br/>🔲 בדיקת נסיעות חזור Backhaul (20% הנחה)<br/>🔲 איתור שליח קרוב על המפה 📍`;
+  };
+
   const fetchHistory = async () => {
     try {
       const res = await fetch(`/api/concierge/history?sessionId=${sessionId}`);
@@ -56,12 +69,11 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
         if (data && data.length > 0) {
           setMessages(data);
         } else {
-          // Default initial friendly message
           setMessages([
             {
-              id: 'init_1',
+              id: 'init_welcome',
               sender: 'ai',
-              text: 'שלום! אני <b>Truk AI Dispatcher & Express Controller</b> — מנוע הלוגיסטיקה, התמחור והשיגור של פלטפורמת "טראק דיל il" (דומיין פעיל: https://truck-deal.vercel.app/).<br/><br/>המערכת פועלת בשני מסלולים נפרדים וממוקדים:<br/>1. ⚡ <b>מודול משלוחי אקספרס (Truk-Express):</b> קטנועים למעטפות ומסמכים דחופים (עו"ד/רו"ח), רכבים פרטיים לחבילות (1-3 קרטונים), וטנדרים לציוד משרדי (עמלה: 5% באשראי / 8% במזומן COD).<br/>2. 🚛 <b>מודול הובלות כבדות ומנופים:</b> מסחריות 3.5ט, משאיות סגורות 7.5-12ט עם רמפה, מנופי סולם/במה (קומות 1-18) ומנופי זרוע כבדים עוז משא (עמלה: 15% ספוט / 10% B2B).<br/><br/>כיצד אוכל לסייע לך כעת?<br/>🔲 איתור שליח קרוב על המפה 📍<br/>🔲 בדיקת נהגי Online זמינים על המפה<br/>🔲 פתיחת מכרז להובלה מזדמנת<br/>🔲 חישוב נסיעת חזור Backhaul (20% הנחה)',
+              text: getInitialWelcomeText(clientName),
               timestamp: new Date().toISOString()
             }
           ]);
@@ -69,6 +81,30 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
       }
     } catch (err) {
       console.error('Error fetching concierge history:', err);
+    }
+  };
+
+  const handleSaveClientName = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = nameInput.trim();
+    if (!trimmed) return;
+    setClientName(trimmed);
+    localStorage.setItem('truk_client_name', trimmed);
+    setIsEditingName(false);
+    setNameInput('');
+    handleSendMessage(`נעים להכיר, שמי ${trimmed}`);
+  };
+
+  const handleLanguageChange = (lang: 'he' | 'en' | 'ru' | 'ar') => {
+    setSelectedLanguage(lang);
+    if (lang === 'en') {
+      handleSendMessage('Please assist me in English');
+    } else if (lang === 'ru') {
+      handleSendMessage('Пожалуйста, помогите мне на русском языке');
+    } else if (lang === 'ar') {
+      handleSendMessage('من فضلك ساعدني باللغة العربية');
+    } else {
+      handleSendMessage('נמשיך בעברית');
     }
   };
 
@@ -90,7 +126,7 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
       const res = await fetch('/api/concierge/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: textToSend, sessionId })
+        body: JSON.stringify({ message: textToSend, sessionId, clientName })
       });
 
       if (res.ok) {
@@ -112,23 +148,24 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
       console.warn('[AIConcierge] Network/server fallback engaged:', err);
       // Multi-Step Smart Client-Side Dispatcher (Interactive Lead Qualification)
       const lower = textToSend.toLowerCase();
+      const greeting = clientName ? `שלום ${clientName}!` : 'שלום!';
       let smartReply = '';
 
       // Check for specific vehicle and delivery types
       if (lower.includes('קרטון') || lower.includes('חבילה') || lower.includes('רכב פרטי')) {
-        smartReply = "🚗 <b>משלוח חבילה ברכב פרטי (1–3 קרטונים):</b><br/>• זמן איסוף ממוצע: 20–35 דקות.<br/>• אומדן מחיר קבוע: ₪50–₪75 עירוני | ₪85–₪120 בינעירוני (עמלת מערכת: 5% אשראי / 8% מזומן COD).<br/><br/><b>מאיפה לאיפה המשלוח?</b> (לדוגמה: מתל אביב לרמת גן / מפתח תקווה לנתניה):<br/><br/>🔲 פתיחת הזמנה ומילוי כתובות מיד<br/>🔲 איתור שליחים זמינים במפה 📍<br/>🔲 שיגור מהיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)";
+        smartReply = `${greeting} 🚗 <b>מסלול א׳: משלוח חבילה ברכב פרטי (1–3 קרטונים):</b><br/>• זמן איסוף ממוצע: 20–35 דקות.<br/>• אומדן מחירון קבוע: ₪50–₪75 עירוני | ₪85–₪120 בינעירוני (עמלת מערכת: 5% אשראי / 8% מזומן COD).<br/><br/><b>מאיזו עיר לאיזו עיר מיועד המשלוח?</b><br/><br/>🔲 פתיחת הזמנה ומילוי כתובות מיד<br/>🔲 איתור שליחים זמינים במפה 📍<br/>🔲 שיגור מהיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)`;
       } else if (lower.includes('מעטפה') || lower.includes('מסמכ') || lower.includes('קטנוע') || lower.includes('עו"ד')) {
-        smartReply = "⚡ <b>משלוח אקספרס דחוף בקטנוע (מעטפה / מסמכים משפטיים):</b><br/>• זמן הגעה לאיסוף: 15–25 דקות בלבד!<br/>• אומדן מחיר קבוע: ₪40–₪65 עירוני | ₪75–₪110 בינעירוני.<br/><br/><b>מאיזה רחוב או עיר לאסוף?</b><br/><br/>🔲 פתיחת הזמנת אקספרס מהירה<br/>🔲 איתור שליח קרוב על המפה 📍<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)";
+        smartReply = `${greeting} ⚡ <b>מסלול א׳: משלוח אקספרס דחוף בקטנוע (מעטפה / מסמכים משפטיים):</b><br/>• זמן הגעה לאיסוף: 15–25 דקות בלבד!<br/>• אומדן מחירון קבוע: ₪40–₪65 עירוני | ₪75–₪110 בינעירוני.<br/>• עמלת מערכת: 5% אשראי / Net 30 | 8% מזומן COD.<br/><br/><b>מאיזה רחוב או עיר לאסוף את המעטפה?</b><br/><br/>🔲 פתיחת הזמנת אקספרס מהירה<br/>🔲 איתור שליח קרוב על המפה 📍<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)`;
       } else if (lower.includes('טנדר') || lower.includes('ציוד משרדי') || lower.includes('4-10 קרטונים')) {
-        smartReply = "🚐 <b>משלוח טנדר / מסחרית קלה (ציוד משרדי וקרטונים מרובים):</b><br/>• מתאים לציוד משרד, 4–10 קרטונים וציוד מחשוב.<br/>• אומדן מחיר: ₪140 – ₪240.<br/><br/>🔲 פתיחת הזמנת טנדר מהירה<br/>🔲 איתור רכבים פנויים על המפה 📍<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)";
+        smartReply = `${greeting} 🚐 <b>מסלול א׳: משלוח טנדר / מסחרית קלה (ציוד משרדי וקרטונים מרובים):</b><br/>• מתאים לציוד משרד, 4–10 קרטונים וציוד מחשוב.<br/>• אומדן מחיר: ₪140 – ₪240.<br/><br/><b>האם נדרש סבל לסחיבת הציוד או פריקה עצמית?</b><br/><br/>🔲 פתיחת הזמנת טנדר מהירה<br/>🔲 איתור רכבים פנויים על המפה 📍<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)`;
       } else if (lower.includes('מנוף') || lower.includes('קומה') || lower.includes('סולם') || lower.includes('הרמה')) {
-        smartReply = "🏗️ <b>עבודות מנוף והרמה לגובה (קומות 1–18 ועוז משא כבד):</b><br/>• ציוד זמין: מנופי סולם חיצוניים ומנופי זרוע כבדים עם מנופאי מוסמך וביטוח צד ג' מלא.<br/>• עלות משוערת: ₪450 – ₪650 לשעת עבודה.<br/><br/>🔲 בדיקת זמינות מנופי הרמה בפורטל<br/>🔲 פתיחת מכרז הובלה + מנוף<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)";
+        smartReply = `${greeting} 🏗️ <b>מסלול ב׳: עבודות מנוף והרמה לגובה (קומות 1–18 ועוז משא כבד):</b><br/>• ציוד זמין: מנופי סולם חיצוניים ומנופי זרוע כבדים (12ט–575ט) עם מנופאי מוסמך וביטוח צד ג' מלא.<br/>• תעריף מנוף סולם: ₪350 – ₪450 לשעה (קומות 1–18).<br/><br/><b>לאיזו קומה נדרשת ההרמה והאם יש חנייה למשאית המנוף?</b><br/><br/>🔲 בדיקת זמינות מנופי הרמה בפורטל<br/>🔲 פתיחת מכרז הובלה + מנוף<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)`;
       } else if (lower.includes('חזור') || lower.includes('חיסכון') || lower.includes('backhaul') || lower.includes('יקר')) {
-        smartReply = "💡 <b>מהפכת ה-Backhaul (נסיעות חזור ב-20% הנחה):</b><br/>משאית 12ט חוזרת ריקה מחיפה, ירושלים או באר שבע למרכז? אתה מקבל <b>20% הנחה מיידית</b> על ההובלה (חיסכון של ₪200–₪400)!<br/><br/>🔲 שריון נסיעת חזור מוזלת (Backhaul)<br/>🔲 פתיחת מכרז הובלה חכם<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)";
+        smartReply = `${greeting} 💡 <b>מהפכת ה-Backhaul (נסיעות חזור ב-20% הנחה):</b><br/>משאית 12ט חוזרת ריקה מחיפה, ירושלים או באר שבע למרכז? אתה מקבל <b>20% הנחה מיידית</b> על ההובלה (חיסכון של ₪200–₪400)!<br/><br/><b>לאיזה יעד ומתי נוח לך לתאם את נסיעת החזור?</b><br/><br/>🔲 שריון נסיעת חזור מוזלת (Backhaul)<br/>🔲 פתיחת מכרז הובלה חכם<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)`;
       } else if (lower.includes('תל אביב') || lower.includes('רמת גן') || lower.includes('חולון') || lower.includes('פתח תקווה') || lower.includes('הרצליה') || lower.includes('ירושלים') || lower.includes('חיפה') || lower.includes('ראשון')) {
-        smartReply = "📍 <b>זיהיתי מסלול משלוח!</b><br/>סדרן ה-AI בדק את המסלול והנהגים הפעילים באזור:<br/>• זמן הגעה משוער לאיסוף: 20–30 דקות.<br/>• אומדן מחירון לנתיב זה: ₪50 – ₪85 (כולל מעקב חי עד למסירה).<br/><br/>🔲 אישור ומעבר להזמנה מהירה (השליח יוצא מיד)<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)<br/>🔲 צפה בשליחים פנויים כעת במפה 📍";
+        smartReply = `${greeting} 📍 <b>זיהיתי מסלול משלוח!</b><br/>סדרן ה-AI בדק את המסלול והנהגים הפעילים באזור:<br/>• זמן הגעה משוער לאיסוף: 20–30 דקות.<br/>• אומדן מחירון לנתיב זה: ₪50 – ₪85 (כולל מעקב חי עד למסירה).<br/><br/><b>האם תרצה להזמין שליח לקריאה מיידית?</b><br/><br/>🔲 אישור ומעבר להזמנה מהירה (השליח יוצא מיד)<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)<br/>🔲 צפה בשליחים פנויים כעת במפה 📍`;
       } else {
-        smartReply = "שלום! אני <b>Truk AI Dispatcher</b> — סדרן ההובלות, המנופים והאקספרס של טראק דיל il.<br/>אנא בחר את סוג המשלוח המבוקש:<br/>• ✉️ <b>קטנוע אקספרס:</b> מעטפות ומסמכים דחופים (15–25 דק')<br/>• 🚗 <b>רכב פרטי:</b> חבילות ו-1–3 קרטונים<br/>• 🚐 <b>טנדר:</b> ציוד משרדי ו-4–10 קרטונים<br/>• 🚚 <b>משאית ומנוף סולם:</b> הובלות כבדות לקומות 1–18<br/><br/>🔲 פתיחת הזמנה ומכרז נהגים<br/>🔲 איתור שליחים פנויים על המפה 📍<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)";
+        smartReply = `${greeting} אני <b>טראק-סדרן | Truk AI Dispatcher & Express Controller</b> — מנוע הלוגיסטיקה, התמחור והשיגור של טראק דיל il.<br/><br/>המערכת פועלת בשני מסלולים ייעודיים:<br/>• ⚡ <b>מסלול א׳: שליחויות אקספרס:</b> מעטפות (₪40–₪70), חבילות (₪80–₪150), טנדר (עמלה 5% אשראי / 8% מזומן COD).<br/>• 🚛 <b>מסלול ב׳: הובלות כבדות ומנופים:</b> משאיות 7.5–12ט, מנופי סולם 1–18 (₪350–₪450/שעה), מנופי עוז משא (עמלה 15% ספוט / 10% B2B; נוסחה: עלות נטו + עמלה * 1.18).<br/><br/><b>באיזה מסלול תרצה שנתמקד כעת?</b><br/><br/>🔲 מסלול א׳: שליחויות אקספרס (קטנוע / רכב פרטי / טנדר)<br/>🔲 מסלול ב׳: הובלות כבדות, דירות ומנופי הרמה<br/>🔲 בדיקת נסיעות חזור Backhaul (20% הנחה)<br/>🔲 שיגור ישיר בוואטסאפ למוקד (https://api.whatsapp.com/send?phone=972549876543)`;
       }
 
       const fallbackMsg: ChatMessage = {
@@ -478,6 +515,143 @@ export default function AIConcierge({ onNavigate }: AIConciergeProps) {
 
             {/* Chat Body messages */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 bg-navy-950/90">
+              {/* Initial Welcome Card Canvas (Interactive Identification & Language Widget) */}
+              <div className="bg-gradient-to-br from-navy-900 via-navy-850 to-navy-900 border-2 border-orange-electric/40 rounded-2xl p-4 sm:p-5 shadow-xl space-y-3.5 text-right">
+                {/* Header & Role */}
+                <div className="flex items-center justify-between border-b border-navy-750 pb-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-xl bg-orange-electric/20 border border-orange-electric/40 flex items-center justify-center text-orange-electric shadow-inner">
+                      <Bot className="w-6 h-6 animate-pulse" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-white text-sm sm:text-base leading-tight">טראק-סדרן | Truk AI Dispatcher</h4>
+                      <span className="text-[10px] sm:text-[11px] text-orange-electric font-bold block">סדרן לוגיסטי, מנוע שיגור בזמן אמת ובקר תמחור | טראק דיל il</span>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                    מוקד פעיל
+                  </span>
+                </div>
+
+                {/* Language Selection Buttons */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-gray-300 flex items-center gap-1">
+                    <Globe className="w-3.5 h-3.5 text-orange-electric" />
+                    בחירת שפת שיחה / Language:
+                  </span>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[
+                      { id: 'he', label: '🇮🇱 עברית' },
+                      { id: 'en', label: '🇬🇧 English' },
+                      { id: 'ru', label: '🇷🇺 Русский' },
+                      { id: 'ar', label: '🇸🇦 العربية' }
+                    ].map((lang) => (
+                      <button
+                        key={lang.id}
+                        type="button"
+                        onClick={() => handleLanguageChange(lang.id as any)}
+                        className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                          selectedLanguage === lang.id
+                            ? 'bg-orange-electric text-white border-orange-electric shadow-md'
+                            : 'bg-navy-950/80 text-gray-300 hover:text-white border-navy-750 hover:border-navy-600'
+                        }`}
+                      >
+                        {lang.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Client Name & Identification Input Field */}
+                <div className="bg-navy-950/80 border border-navy-750 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-gray-200 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-orange-electric" />
+                      {clientName ? `לקוח מזוהה: ${clientName}` : 'זיהוי לקוח לקבלת ליווי אישי:'}
+                    </span>
+                    {clientName && !isEditingName && (
+                      <button
+                        type="button"
+                        onClick={() => { setIsEditingName(true); setNameInput(clientName); }}
+                        className="text-[10px] text-orange-electric hover:underline flex items-center gap-1 font-bold cursor-pointer"
+                      >
+                        <Edit3 className="w-3 h-3" />
+                        שנה שם
+                      </button>
+                    )}
+                  </div>
+
+                  {(!clientName || isEditingName) ? (
+                    <form onSubmit={handleSaveClientName} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={nameInput}
+                        onChange={(e) => setNameInput(e.target.value)}
+                        placeholder="הזן את שמך הפרטי (למשל: דניאל, מיכל...)"
+                        className="flex-1 px-3 py-1.5 bg-navy-900 border border-navy-700 text-white rounded-lg text-xs outline-none focus:border-orange-electric"
+                      />
+                      <button
+                        type="submit"
+                        className="px-3 py-1.5 bg-orange-electric hover:bg-orange-hover text-white rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        שמור
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="flex items-center justify-between bg-navy-900/90 border border-emerald-500/30 px-3 py-1.5 rounded-lg text-xs text-emerald-300 font-bold">
+                      <span>שלום {clientName}! טראק-סדרן לשירותך.</span>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Two Dedicated Tracks Selection Grid */}
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-[11px] font-bold text-gray-300 block">בחר מסלול שירות להתחלה מהירה:</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {/* Track A */}
+                    <div 
+                      onClick={() => handleSendMessage('אני מעוניין במסלול א׳: שליחויות אקספרס (קטנוע / רכב פרטי / טנדר)')}
+                      className="p-3 rounded-xl bg-navy-950/90 border-2 border-orange-electric/40 hover:border-orange-electric transition-all cursor-pointer group hover:bg-navy-900"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="w-6 h-6 rounded-lg bg-orange-electric/20 text-orange-electric flex items-center justify-center font-black text-xs">
+                          ⚡
+                        </span>
+                        <span className="font-black text-white text-xs group-hover:text-orange-electric transition-colors">
+                          מסלול א׳: שליחויות אקספרס
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-300 leading-snug">
+                        קטנוע למעטפות (₪40–₪70) | רכב פרטי (₪80–₪150) | טנדר.<br/>
+                        <span className="text-orange-electric font-bold text-[10px]">עמלה: 5% אשראי / Net 30 | 8% מזומן COD</span>
+                      </p>
+                    </div>
+
+                    {/* Track B */}
+                    <div 
+                      onClick={() => handleSendMessage('אני מעוניין במסלול ב׳: הובלות כבדות, דירות ומנופים')}
+                      className="p-3 rounded-xl bg-navy-950/90 border-2 border-blue-500/40 hover:border-blue-400 transition-all cursor-pointer group hover:bg-navy-900"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="w-6 h-6 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center font-black text-xs">
+                          🚛
+                        </span>
+                        <span className="font-black text-white text-xs group-hover:text-blue-300 transition-colors">
+                          מסלול ב׳: הובלות ומנופים
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-300 leading-snug">
+                        משאיות 7.5–12ט עם רמפה | מנופי סולם 1–18 (₪350–₪450/שעה).<br/>
+                        <span className="text-blue-300 font-bold text-[10px]">עמלה: 15% ספוט / 10% B2B | 20% Backhaul</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {messages.map((msg) => {
                 const isAI = msg.sender === 'ai';
                 return (
