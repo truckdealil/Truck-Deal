@@ -170,3 +170,52 @@ export const CATALOG_ITEMS: Omit<InventoryItem, 'quantity'>[] = [
   { id: 'box_large', name: 'ארגז קרטון גדול (חפצים שבירים)', category: 'boxes' },
   { id: 'bag_huge', name: 'שק ענק / מזוודה', category: 'boxes' },
 ];
+
+export interface DispatchRule {
+  id: string;
+  scenario_code: string;
+  track: 'express' | 'heavy' | 'crane';
+  cargo_type: string;
+  vehicle_type: string;
+  base_price_min: number;
+  base_price_max: number;
+  fee_credit_percent: number;
+  fee_cash_percent: number;
+  pii_restriction_level: string;
+  delivery_flow: {
+    requires_hand_delivery?: boolean;
+    requires_signature?: boolean;
+    allowed_payment_methods?: string[];
+    suggested_fee_cash?: number;
+    suggested_courier_net?: number;
+    max_boxes?: number;
+    requires_loading_help?: boolean;
+    includes_hydraulic_lift?: boolean;
+    typical_rooms?: string;
+    max_floor?: number;
+    hourly_rate?: number;
+    [key: string]: any;
+  };
+  created_at?: string;
+}
+
+export interface ExpressOrder {
+  order_id: string;
+  client_name: string;
+  origin_city: string;
+  dest_city: string;
+  origin_address_masked: string;
+  dest_address_masked: string;
+  recipient_name: string;
+  recipient_phone_encrypted: string;
+  cargo_description: string;
+  vehicle_required: string;
+  payment_method: string;
+  total_amount: number;
+  courier_payout: number;
+  system_fee: number;
+  fee_rate: number;
+  status: string;
+  created_at?: string;
+}
+

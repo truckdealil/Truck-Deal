@@ -295,31 +295,42 @@ export const EXPRESS_LOOKUP_MATRIX = {
 export function matchDeterministicPricing(query: string, opts?: { paymentMethod?: 'card' | 'cash'; isBackhaul?: boolean }): {
   matched: boolean;
   track: 'express' | 'freight';
+  scenarioCode?: string;
   vehicle: string;
   estimatedPrice: string;
   platformFee: string;
   notes: string;
   breakdown?: any;
+  deliveryFlow?: any;
 } | null {
   const q = query.toLowerCase();
   const paymentMethod = opts?.paymentMethod || (q.includes('מזומן') || q.includes('cod') ? 'cash' : 'card');
   const feePct = paymentMethod === 'card' ? 5 : 8;
 
-  // Track A: Express Envelope
-  if (q.includes('מעטפה') || q.includes('משפטי') || q.includes('בית משפט') || q.includes('עו"ד') || q.includes('מסמכ')) {
-    const isIntercity = q.includes('חיפה') || q.includes('ירושלים') || q.includes('באר שבע') || q.includes('נתניה');
-    const baseNet = isIntercity ? 95 : 55;
+  // Track A: Express Envelope (EXP_ENVELOPE_COURT)
+  if (q.includes('מעטפה') || q.includes('משפטי') || q.includes('בית משפט') || q.includes('עו"ד') || q.includes('מסמכ') || q.includes('הוד השרון')) {
+    const isCourtOrIntercity = q.includes('בית משפט') || q.includes('עו"ד') || q.includes('הוד השרון') || q.includes('חיפה') || q.includes('ירושלים') || q.includes('באר שבע');
+    const baseNet = isCourtOrIntercity ? 110 : 80;
     const priced = priceExpress(baseNet * 100, paymentMethod);
     return {
       matched: true,
       track: 'express',
+      scenarioCode: 'EXP_ENVELOPE_COURT',
       vehicle: 'קטנוע / אופנוע שליחויות בלבד (הגעה תוך 15-25 דק\')',
       estimatedPrice: `₪${priced.totalClientIls}`,
-      platformFee: `${feePct}% (${paymentMethod === 'card' ? 'אשראי / Net 30' : 'מזומן COD בקבלה'})`,
-      notes: isIntercity ? 'משלוח בין-עירוני קרוב' : 'משלוח עירוני מהיר',
-      breakdown: priced
+      platformFee: `${feePct}% (${paymentMethod === 'card' ? 'אשראי / Net 30' : 'מזומן COD 8%'})`,
+      notes: isCourtOrIntercity ? 'מעטפה משפטית דחופה (מסירה אישית וחתימה)' : 'משלוח מעטפה מהיר',
+      breakdown: priced,
+      deliveryFlow: {
+        requires_hand_delivery: true,
+        requires_signature: true,
+        allowed_payment_methods: ['cash_cod', 'credit_card', 'net_30'],
+        suggested_fee_cash: 8.80,
+        suggested_courier_net: 110.00
+      }
     };
   }
+
 
   // Track A: Express Parcel 1-3 boxes
   if (q.includes('חבילה') || q.includes('קרטון') || q.includes('דוגמי') || q.includes('1-3') || q.includes('רכב פרטי')) {

@@ -1,0 +1,21 @@
+[
+  {
+    "order_id": "EXP-2026-891",
+    "client_name": "ראמי מסארוה",
+    "origin_city": "הוד השרון",
+    "dest_city": "תל אביב",
+    "origin_address_masked": "התלמיד 6, הוד השרון",
+    "dest_address_masked": "בית המשפט המחוזי, ויצמן 1, תל אביב",
+    "recipient_name": "עו\"ד עזאם נאשף",
+    "recipient_phone_encrypted": "050-8860896",
+    "cargo_description": "מעטפה / מסמכים משפטיים דחופים (מסירה אישית וחתימה)",
+    "vehicle_required": "קטנוע / אופנוע שליחויות",
+    "payment_method": "cash_cod",
+    "total_amount": 110.00,
+    "courier_payout": 110.00,
+    "system_fee": 8.80,
+    "fee_rate": 0.08,
+    "status": "ready_for_dispatch",
+    "created_at": "2026-10-14T00:00:00.000Z"
+  }
+]

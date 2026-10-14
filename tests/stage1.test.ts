@@ -144,4 +144,47 @@ describe('Stage 1 Security & Transition Rules', () => {
     expect(expressCash.feePercent).toBe(8);
     expect(expressCash.platformFeeIls).toBe(4.8);
   });
+
+  it('9. Dispatch Rulebook API returns EXP_ENVELOPE_COURT scenario rule', async () => {
+    const res = await request(app).get('/api/dispatch/rulebook');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+
+    const courtRule = res.body.find((r: any) => r.scenario_code === 'EXP_ENVELOPE_COURT');
+    expect(courtRule).toBeDefined();
+    expect(courtRule.track).toBe('express');
+    expect(courtRule.vehicle_type).toBe('scooter');
+    expect(courtRule.base_price_min).toBe(80);
+    expect(courtRule.base_price_max).toBe(150);
+    expect(courtRule.fee_credit_percent).toBe(0.05);
+    expect(courtRule.fee_cash_percent).toBe(0.08);
+    expect(courtRule.delivery_flow.requires_hand_delivery).toBe(true);
+    expect(courtRule.delivery_flow.requires_signature).toBe(true);
+    expect(courtRule.delivery_flow.suggested_courier_net).toBe(110);
+    expect(courtRule.delivery_flow.suggested_fee_cash).toBe(8.8);
+  });
+
+  it('10. Express Orders API returns EXP-2026-891 and supports tracking', async () => {
+    const res = await request(app).get('/api/express/orders');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+
+    const ramiOrder = res.body.find((o: any) => o.order_id === 'EXP-2026-891');
+    expect(ramiOrder).toBeDefined();
+    expect(ramiOrder.client_name).toBe('ראמי מסארוה');
+    expect(ramiOrder.origin_city).toBe('הוד השרון');
+    expect(ramiOrder.dest_city).toBe('תל אביב');
+    expect(ramiOrder.payment_method).toBe('cash_cod');
+    expect(ramiOrder.total_amount).toBe(110);
+    expect(ramiOrder.system_fee).toBe(8.8);
+    expect(ramiOrder.fee_rate).toBe(0.08);
+    expect(ramiOrder.status).toBe('ready_for_dispatch');
+
+    // Also verify GET /api/moves/EXP-2026-891 tracking integration
+    const trackingRes = await request(app).get('/api/moves/EXP-2026-891');
+    expect(trackingRes.status).toBe(200);
+    expect(trackingRes.body.clientName).toBe('ראמי מסארוה');
+    expect(trackingRes.body.id).toBe('EXP-2026-891');
+  });
 });
+

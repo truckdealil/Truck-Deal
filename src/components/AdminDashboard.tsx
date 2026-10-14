@@ -4,10 +4,10 @@ import {
   Calendar, CheckCircle2, XCircle, Clock, ExternalLink, 
   Search, ShieldCheck, Check, Ban, AlertCircle, Building, User, Star,
   Plus, Edit, Trash2, Globe, Send, CheckCircle, Info, Settings, Shield, Map, FileText,
-  Lock, LogOut
+  Lock, LogOut, Zap, BookOpen, Package
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MoveRequest, CRMLead, MoveStatus, PaymentStatus } from '../types';
+import { MoveRequest, CRMLead, MoveStatus, PaymentStatus, DispatchRule, ExpressOrder } from '../types';
 import LiveMap from './LiveMap';
 import FleetManager from './FleetManager';
 import OperationalChat from './OperationalChat';
@@ -24,15 +24,18 @@ export default function AdminDashboard() {
   const [moves, setMoves] = useState<MoveRequest[]>([]);
   const [leads, setLeads] = useState<CRMLead[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
+  const [expressOrders, setExpressOrders] = useState<ExpressOrder[]>([]);
+  const [dispatchRules, setDispatchRules] = useState<DispatchRule[]>([]);
   const [settings, setSettings] = useState<any>({ makeWebhookUrl: '' });
   const [chats, setChats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Filters and active views
-  const [activeTab, setActiveTab] = useState<'moves' | 'leads' | 'drivers' | 'settings' | 'live_map' | 'fleet' | 'reviews'>('moves');
+  const [activeTab, setActiveTab] = useState<'moves' | 'leads' | 'drivers' | 'settings' | 'live_map' | 'fleet' | 'reviews' | 'express_orders' | 'rulebook'>('moves');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
   
   // Selected Move detail modal view
   const [selectedMove, setSelectedMove] = useState<MoveRequest | null>(null);
@@ -133,12 +136,14 @@ export default function AdminDashboard() {
     try {
       const headers = getAuthHeaders();
 
-      const [movesRes, leadsRes, driversRes, settingsRes, chatsRes] = await Promise.all([
+      const [movesRes, leadsRes, driversRes, settingsRes, chatsRes, expressRes, rulebookRes] = await Promise.all([
         fetch('/api/moves', { headers }),
         fetch('/api/leads', { headers }),
         fetch('/api/drivers', { headers }),
         fetch('/api/settings', { headers }),
-        fetch('/api/chats', { headers })
+        fetch('/api/chats', { headers }),
+        fetch('/api/express/orders', { headers }),
+        fetch('/api/dispatch/rulebook', { headers })
       ]);
 
       if (!movesRes.ok || !leadsRes.ok) {
@@ -166,6 +171,14 @@ export default function AdminDashboard() {
         const chatsData = await chatsRes.json();
         setChats(chatsData);
       }
+      if (expressRes.ok) {
+        const expressData = await expressRes.json();
+        setExpressOrders(expressData);
+      }
+      if (rulebookRes.ok) {
+        const rulebookData = await rulebookRes.json();
+        setDispatchRules(rulebookData);
+      }
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'שגיאה כללית בחיבור למערכת הניהול');
@@ -173,6 +186,23 @@ export default function AdminDashboard() {
       setLoading(false);
     }
   };
+
+  const handleUpdateExpressStatus = async (orderId: string, newStatus: string) => {
+    try {
+      const res = await fetch(`/api/express/orders/${orderId}/status`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setExpressOrders(prev => prev.map(o => o.order_id === orderId ? updated : o));
+      }
+    } catch (err) {
+      console.error('Failed to update express order status:', err);
+    }
+  };
+
 
   const handleToggleDriverStatus = async (driverId: string, currentStatus: string, driverPhone: string) => {
     const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
@@ -880,9 +910,170 @@ export default function AdminDashboard() {
           </div>
         );
 
+      case 'express_orders':
+        return (
+          <div className="space-y-4">
+            <div className="bg-navy-900 border border-navy-800 rounded-2xl p-5 mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-orange-electric" />
+                  <span>ניהול הזמנות אקספרס וסנכרון סשן (Express Orders)</span>
+                </h3>
+                <p className="text-xs text-gray-400 mt-1">
+                  תיעוד הזמנות שנסגרו דרך טראק-סדרן או משלוחי קטנוע/רכב פרטי/טנדר
+                </p>
+              </div>
+              <span className="bg-orange-electric/10 text-orange-electric px-3 py-1 rounded-full text-xs font-bold border border-orange-electric/20">
+                {expressOrders.length} הזמנות
+              </span>
+            </div>
+
+            {expressOrders.length === 0 ? (
+              <div className="text-center py-12 bg-navy-900 border border-navy-800 rounded-2xl text-gray-500">
+                אין כרגע הזמנות אקספרס במערכת.
+              </div>
+            ) : (
+              expressOrders.map((order) => (
+                <div key={order.order_id} className="bg-navy-900 border border-navy-800 rounded-2xl p-5 hover:border-navy-700 transition-all">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-navy-800/80 pb-3 mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-orange-electric/20 text-orange-electric border border-orange-electric/30">
+                        {order.order_id}
+                      </span>
+                      <span className="font-bold text-white text-base">{order.client_name}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2.5 py-1 rounded text-xs font-bold ${
+                        order.status === 'ready_for_dispatch' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                        order.status === 'dispatched' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
+                        'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                      }`}>
+                        {order.status === 'ready_for_dispatch' ? 'מוכן לשיגור' :
+                         order.status === 'dispatched' ? 'שוגר לשליח' :
+                         order.status === 'delivered' ? 'נמסר בהצלחה' : order.status}
+                      </span>
+                      <select
+                        value={order.status}
+                        onChange={(e) => handleUpdateExpressStatus(order.order_id, e.target.value)}
+                        className="bg-navy-950 border border-navy-700 text-xs text-gray-300 rounded px-2 py-1 outline-none"
+                      >
+                        <option value="ready_for_dispatch">מוכן לשיגור</option>
+                        <option value="dispatched">שוגר לשליח</option>
+                        <option value="in_transit">בדרך ליעד</option>
+                        <option value="delivered">נמסר בהצלחה</option>
+                        <option value="cancelled">בוטל</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                    <div className="space-y-1.5">
+                      <div className="text-gray-300">
+                        <span className="text-gray-500 font-semibold">מסלול: </span>
+                        <b>{order.origin_city}</b> ← <b>{order.dest_city}</b>
+                      </div>
+                      <div className="text-gray-400">
+                        <span className="text-gray-500">מוצא: </span>
+                        {order.origin_address_masked}
+                      </div>
+                      <div className="text-gray-400">
+                        <span className="text-gray-500">יעד: </span>
+                        {order.dest_address_masked}
+                      </div>
+                      <div className="text-gray-300">
+                        <span className="text-gray-500 font-semibold">נמען: </span>
+                        <b>{order.recipient_name}</b> {order.recipient_phone_encrypted && `(${order.recipient_phone_encrypted})`}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 bg-navy-950/60 p-3 rounded-xl border border-navy-800">
+                      <div className="text-gray-300">
+                        <span className="text-gray-500 font-semibold">תיאור מטען: </span>
+                        {order.cargo_description}
+                      </div>
+                      <div className="text-gray-300">
+                        <span className="text-gray-500 font-semibold">רכב נדרש: </span>
+                        {order.vehicle_required}
+                      </div>
+                      <div className="text-gray-300">
+                        <span className="text-gray-500 font-semibold">תשלום: </span>
+                        <span className="font-bold text-orange-electric">
+                          {order.payment_method === 'cash_cod' ? 'מזומן COD (קבלה)' : 'כרטיס אשראי / דיגיטלי'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center pt-1 border-t border-navy-800 text-sm">
+                        <span className="text-gray-400 font-medium">סה"כ: ₪{order.total_amount}</span>
+                        <span className="text-emerald-400 font-bold">שליח: ₪{order.courier_payout}</span>
+                        <span className="text-amber-400 font-bold">עמלה ({Math.round(order.fee_rate * 100)}%): ₪{order.system_fee}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        );
+
+      case 'rulebook':
+        return (
+          <div className="space-y-4">
+            <div className="bg-navy-900 border border-navy-800 rounded-2xl p-5 mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-orange-electric" />
+                  <span>ספר חוקי שיגור ותבניות שיחה (Dispatch Rulebook)</span>
+                </h3>
+                <p className="text-xs text-gray-400 mt-1">
+                  הגדרות תמחור, סוגי רכב ותנאי שירות לשליפה מהירה ע"י טראק-סדרן
+                </p>
+              </div>
+              <span className="bg-orange-electric/10 text-orange-electric px-3 py-1 rounded-full text-xs font-bold border border-orange-electric/20">
+                {dispatchRules.length} חוקים פעילים
+              </span>
+            </div>
+
+            {dispatchRules.map((rule) => (
+              <div key={rule.id || rule.scenario_code} className="bg-navy-900 border border-navy-800 rounded-2xl p-5 hover:border-navy-700 transition-all">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-navy-800 pb-3 mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                      {rule.scenario_code}
+                    </span>
+                    <span className="text-xs px-2 py-0.5 rounded font-bold bg-navy-950 text-gray-300 border border-navy-800">
+                      מסלול: {rule.track}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-400 font-mono">
+                    PII: <span className="text-orange-electric font-bold">{rule.pii_restriction_level}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                  <div className="space-y-1">
+                    <div className="text-gray-400">סוג מטען: <b className="text-white">{rule.cargo_type}</b></div>
+                    <div className="text-gray-400">כלי רכב: <b className="text-white">{rule.vehicle_type}</b></div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-gray-400">טווח מחיר בסיס: <b className="text-emerald-400">₪{rule.base_price_min} - ₪{rule.base_price_max}</b></div>
+                    <div className="text-gray-400">עמלת אשראי: <b className="text-white">{rule.fee_credit_percent * 100}%</b> | מזומן COD: <b className="text-white">{rule.fee_cash_percent * 100}%</b></div>
+                  </div>
+                  <div className="bg-navy-950 p-2.5 rounded-xl border border-navy-800 font-mono text-[11px] text-gray-300">
+                    <span className="text-gray-500 block mb-1">delivery_flow:</span>
+                    <div>מסירה אישית: {rule.delivery_flow?.requires_hand_delivery ? 'כן' : 'לא'}</div>
+                    <div>חתימה: {rule.delivery_flow?.requires_signature ? 'כן' : 'לא'}</div>
+                    {rule.delivery_flow?.suggested_fee_cash !== undefined && <div>עמלת מזומן מוצעת: ₪{rule.delivery_flow.suggested_fee_cash}</div>}
+                    {rule.delivery_flow?.suggested_courier_net !== undefined && <div>תשלום מוצע לשליח: ₪{rule.delivery_flow.suggested_courier_net}</div>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+
       default:
         return null;
     }
+
   };
 
   return (
@@ -989,6 +1180,22 @@ export default function AdminDashboard() {
           >
             ביקורות ומשובים ⭐
           </button>
+          <button
+            onClick={() => { setActiveTab('express_orders'); setSelectedMove(null); }}
+            className={`pb-3 font-bold text-base cursor-pointer transition-all ${
+              activeTab === 'express_orders' ? 'text-orange-electric border-b-2 border-orange-electric' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            הזמנות אקספרס ⚡ ({expressOrders.length})
+          </button>
+          <button
+            onClick={() => { setActiveTab('rulebook'); setSelectedMove(null); }}
+            className={`pb-3 font-bold text-base cursor-pointer transition-all ${
+              activeTab === 'rulebook' ? 'text-orange-electric border-b-2 border-orange-electric' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            ספר חוקי שיגור 📖 ({dispatchRules.length})
+          </button>
         </div>
 
         <button
@@ -1001,17 +1208,18 @@ export default function AdminDashboard() {
       </div>
 
       {/* Control bar */}
-      {activeTab !== 'settings' && activeTab !== 'drivers' && activeTab !== 'live_map' && activeTab !== 'fleet' && (
+      {activeTab !== 'settings' && activeTab !== 'drivers' && activeTab !== 'live_map' && activeTab !== 'fleet' && activeTab !== 'rulebook' && (
         <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-6 bg-navy-900 p-4 rounded-xl border border-navy-800">
           <div className="relative w-full md:w-80">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
             <input
               type="text"
-              placeholder={activeTab === 'moves' ? "חפש לפי לקוח, טלפון או כתובת..." : "חפש ליד לפי שם, טלפון..."}
+              placeholder={activeTab === 'moves' ? "חפש לפי לקוח, טלפון או כתובת..." : activeTab === 'express_orders' ? "חפש לפי לקוח, עיר או מזהה..." : "חפש ליד לפי שם, טלפון..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pr-9 pl-4 py-2 bg-navy-950 border border-navy-700 rounded-lg text-sm text-white focus:border-orange-electric outline-none"
             />
+
           </div>
 
           {activeTab === 'moves' && (

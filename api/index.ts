@@ -206,6 +206,8 @@ const SHIFTS_FILE = path.join(DATA_DIR, 'shifts.json');
 const CHATS_FILE = path.join(DATA_DIR, 'chats.json');
 const CONCIERGE_CHATS_FILE = path.join(DATA_DIR, 'concierge_chats.json');
 const DRIVER_AVAILABILITY_FILE = path.join(DATA_DIR, 'driver_availability.json');
+const DISPATCH_RULEBOOK_FILE = path.join(DATA_DIR, 'dispatch_rulebook.json');
+const EXPRESS_ORDERS_FILE = path.join(DATA_DIR, 'express_orders.json');
 
 // In-Memory Database Cache
 const inMemoryCache: Record<string, any> = {};
@@ -777,12 +779,51 @@ app.get('/api/moves/bidding', (req, res) => {
   res.json(openMoves);
 });
 
-// GET single move (with dynamic viewer role masking)
+// GET single move (with dynamic viewer role masking & express orders fallback)
 app.get('/api/moves/:id', (req, res) => {
   const moves = readDatabase<any>(MOVES_FILE);
-  const move = moves.find((m: any) => m.id === req.params.id);
+  let move = moves.find((m: any) => m.id === req.params.id);
   
   if (!move) {
+    const expressOrders = readDatabase<any>(EXPRESS_ORDERS_FILE, []);
+    const expOrder = expressOrders.find((o: any) => o.order_id === req.params.id);
+    if (expOrder) {
+      move = {
+        id: expOrder.order_id,
+        clientName: expOrder.client_name,
+        clientPhone: expOrder.recipient_phone_encrypted || '',
+        clientEmail: '',
+        originAddress: expOrder.origin_address_masked || expOrder.origin_city,
+        destAddress: expOrder.dest_address_masked || expOrder.dest_city,
+        moveDate: expOrder.created_at ? expOrder.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+        moveTime: 'מיידי',
+        moveType: 'express',
+        floor: 1,
+        hasElevator: true,
+        elevatorDetails: { sofaFits: true, fridgeFits: true },
+        truckAccess: 'easy',
+        craneNeeded: 'no',
+        items: [{ id: 'exp_item', name: expOrder.cargo_description, category: 'other', quantity: 1 }],
+        createdAt: expOrder.created_at || new Date().toISOString(),
+        status: expOrder.status === 'ready_for_dispatch' ? 'approved_for_driver' : expOrder.status,
+        paymentStatus: expOrder.payment_method === 'cash_cod' ? 'net_30' : 'paid_full',
+        clientApprovedForBilling: true,
+        driverBids: [{
+          id: 'bid_courier',
+          driverName: expOrder.vehicle_required || 'שליח אקספרס',
+          driverPhone: '054-9876543',
+          bidAmount: expOrder.total_amount,
+          estimatedDuration: '25-45 דקות',
+          submittedAt: expOrder.created_at || new Date().toISOString(),
+          status: 'approved'
+        }],
+        finalApprovedBidId: 'bid_courier',
+        assignedDriverName: expOrder.vehicle_required || 'שליח קטנוע',
+        assignedDriverPhone: '054-9876543',
+        assignedDriverTruck: expOrder.vehicle_required
+      };
+      return res.json(move);
+    }
     return res.status(404).json({ error: 'ההובלה לא נמצאה' });
   }
 
@@ -790,6 +831,7 @@ app.get('/api/moves/:id', (req, res) => {
   const maskedMove = toPublicMove(move, viewer);
   res.json(maskedMove);
 });
+
 
 // POST create a new move request (Client submits)
 app.post('/api/moves', creationLimiter, async (req, res) => {
@@ -1792,6 +1834,15 @@ app.post('/api/concierge/chat', chatLimiter, async (req, res) => {
           ? `\n[זיהוי מעבר מסלול (Branching)]: הלקוח עובר ממסלול אקספרס למסלול הובלה כבדה / דירה (Track B). בצע מעבר חלק למשאית/מסחרית, הסבר על סוג הרכב, ובקש אימות קומה ומעלית!\n`
           : (isSwitchingToCard ? `\n[זיהוי מעבר אמצעי תשלום]: הלקוח עובר לתשלום באשראי/דיגיטלי — הפחת אוטומטית את עמלת המערכת מ-8% (מזומן COD) ל-5% והצג את החיסכון!\n` : '');
 
+        const rulebook = readDatabase<any>(DISPATCH_RULEBOOK_FILE, []);
+        const matchingRule = deterministicMatch?.scenarioCode 
+          ? rulebook.find((r: any) => r.scenario_code === deterministicMatch.scenarioCode)
+          : null;
+        const rulebookContext = matchingRule
+          ? `\n[כלל שיגור מאומת מספר החוקים (${matchingRule.scenario_code})]:\n- מסלול: ${matchingRule.track} | מטען: ${matchingRule.cargo_type} | רכב: ${matchingRule.vehicle_type}\n- טווח מחיר: ₪${matchingRule.base_price_min} - ₪${matchingRule.base_price_max}\n- עמלת אשראי: ${matchingRule.fee_credit_percent * 100}% | עמלת מזומן COD: ${matchingRule.fee_cash_percent * 100}%\n- תנאי מסירה: ${matchingRule.delivery_flow?.requires_hand_delivery ? 'מסירה אישית וחתימה ידנית' : 'רגיל'}\n- תשלום מוצע לשליח: ₪${matchingRule.delivery_flow?.suggested_courier_net || 110} | עמלת מערכת: ₪${matchingRule.delivery_flow?.suggested_fee_cash || 8.80}\n`
+          : '';
+
+
         const systemPrompt = `אתה "טראק-סדרן | Truk AI Dispatcher & Express Controller", מנוע הלוגיסטיקה, שיגור בזמן אמת ובקר התמחור של פלטפורמת "טראק דיל il" (דומיין פעיל: https://truck-deal.vercel.app/).
 
 שם הלקוח בשיחה: "${clientDisplayName}"
@@ -1828,7 +1879,8 @@ ${backhaulSummary}
 - אם הלקוח עובר מאקספרס להובלת דירה/ציוד כבד: בצע מעבר חלק למסלול ב׳, עדכן את סוג הרכב המתאים (3.5ט ל-1-2 חדרים, 7.5-12ט ל-3-5 חדרים), ושאל על קומה ומעלית.
 - אם הלקוח עובר ממזומן לאשראי: הפחת אוטומטית את עמלת המערכת מ-8% ל-5% והצג את החישוב המעודכן.
 - אם המסלול מתאים לנסיעת חזור (Backhaul): הצע הנחה דטרמיניסטית של 20% על הציר.
-${deterministicContext}${branchingContext}
+${deterministicContext}${rulebookContext}${branchingContext}
+
 מבנה התשובה:
 1. פנייה אישית חמה ל-"${clientDisplayName}".
 2. אומדן מחירון דטרמיניסטי קצר והתאמת כלי הרכב.
@@ -1908,9 +1960,215 @@ app.post('/api/pricing/calculate', (req, res) => {
   }
 });
 
+/* --- 9. DISPATCH RULEBOOK & EXPRESS ORDERS --- */
+
+// 1. Dispatch Rulebook: List all rules
+app.get('/api/dispatch/rulebook', (req, res) => {
+  try {
+    const rules = readDatabase<any>(DISPATCH_RULEBOOK_FILE, []);
+    res.json(rules);
+  } catch (error) {
+    res.status(500).json({ error: 'שגיאה בטעינת ספר החוקים' });
+  }
+});
+
+// Get specific scenario rule
+app.get('/api/dispatch/rulebook/:scenario_code', (req, res) => {
+  try {
+    const rules = readDatabase<any>(DISPATCH_RULEBOOK_FILE, []);
+    const rule = rules.find((r: any) => r.scenario_code === req.params.scenario_code);
+    if (!rule) {
+      return res.status(404).json({ error: 'חוק שיגור לא נמצא' });
+    }
+    res.json(rule);
+  } catch (error) {
+    res.status(500).json({ error: 'שגיאה בשליפת חוק השיגור' });
+  }
+});
+
+// Create / update scenario rule (Admin protected)
+app.post('/api/dispatch/rulebook', requireAdmin, (req, res) => {
+  try {
+    const {
+      scenario_code,
+      track,
+      cargo_type,
+      vehicle_type,
+      base_price_min,
+      base_price_max,
+      fee_credit_percent,
+      fee_cash_percent,
+      pii_restriction_level,
+      delivery_flow
+    } = req.body;
+
+    if (!scenario_code || !track || !cargo_type || !vehicle_type) {
+      return res.status(400).json({ error: 'חסרים שדות חובה לחוק השיגור' });
+    }
+
+    const rules = readDatabase<any>(DISPATCH_RULEBOOK_FILE, []);
+    const existingIndex = rules.findIndex((r: any) => r.scenario_code === scenario_code);
+
+    const ruleRecord = {
+      id: existingIndex >= 0 ? rules[existingIndex].id : crypto.randomUUID(),
+      scenario_code,
+      track,
+      cargo_type,
+      vehicle_type,
+      base_price_min: Number(base_price_min) || 80,
+      base_price_max: Number(base_price_max) || 150,
+      fee_credit_percent: Number(fee_credit_percent) || 0.05,
+      fee_cash_percent: Number(fee_cash_percent) || 0.08,
+      pii_restriction_level: pii_restriction_level || 'strict_mask',
+      delivery_flow: delivery_flow || {},
+      created_at: existingIndex >= 0 ? rules[existingIndex].created_at : new Date().toISOString()
+    };
+
+    if (existingIndex >= 0) {
+      rules[existingIndex] = ruleRecord;
+    } else {
+      rules.push(ruleRecord);
+    }
+
+    writeDatabase(DISPATCH_RULEBOOK_FILE, rules);
+    res.status(201).json(ruleRecord);
+  } catch (error) {
+    res.status(500).json({ error: 'שגיאה בשמירת חוק השיגור' });
+  }
+});
+
+// 2. Express Orders: List express orders
+app.get('/api/express/orders', (req, res) => {
+  try {
+    const orders = readDatabase<any>(EXPRESS_ORDERS_FILE, []);
+    const viewer = getViewerRole(req);
+    if (viewer === 'admin') {
+      return res.json(orders);
+    }
+    // Return with masked phone if public
+    const sanitized = orders.map((o: any) => ({
+      ...o,
+      recipient_phone_encrypted: o.recipient_phone_encrypted ? o.recipient_phone_encrypted.replace(/(\d{3})\d{4}(\d{3})/, '$1-***-$2') : ''
+    }));
+    res.json(sanitized);
+  } catch (error) {
+    res.status(500).json({ error: 'שגיאה בטעינת הזמנות אקספרס' });
+  }
+});
+
+// Get single express order
+app.get('/api/express/orders/:order_id', (req, res) => {
+  try {
+    const orders = readDatabase<any>(EXPRESS_ORDERS_FILE, []);
+    const order = orders.find((o: any) => o.order_id === req.params.order_id);
+    if (!order) {
+      return res.status(404).json({ error: 'הזמנת אקספרס לא נמצאה' });
+    }
+    const viewer = getViewerRole(req);
+    if (viewer === 'admin') {
+      return res.json(order);
+    }
+    res.json({
+      ...order,
+      recipient_phone_encrypted: order.recipient_phone_encrypted ? order.recipient_phone_encrypted.replace(/(\d{3})\d{4}(\d{3})/, '$1-***-$2') : ''
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'שגיאה בשליפת הזמנת אקספרס' });
+  }
+});
+
+// Create new express order
+app.post('/api/express/orders', creationLimiter, (req, res) => {
+  try {
+    const {
+      order_id,
+      client_name,
+      origin_city,
+      dest_city,
+      origin_address_masked,
+      dest_address_masked,
+      recipient_name,
+      recipient_phone_encrypted,
+      cargo_description,
+      vehicle_required,
+      payment_method,
+      total_amount,
+      courier_payout,
+      system_fee,
+      fee_rate,
+      status
+    } = req.body;
+
+    if (!client_name || !origin_city || !dest_city) {
+      return res.status(400).json({ error: 'שם לקוח, עיר מוצא ועיר יעד הינם שדות חובה' });
+    }
+
+    const orders = readDatabase<any>(EXPRESS_ORDERS_FILE, []);
+    const newOrderId = order_id || `EXP-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+
+    const payMethod = payment_method === 'credit_card' || payment_method === 'card' ? 'credit_card' : 'cash_cod';
+    const computedFeeRate = fee_rate !== undefined ? Number(fee_rate) : (payMethod === 'credit_card' ? 0.05 : 0.08);
+    const amount = Number(total_amount) || 110.00;
+    const payout = courier_payout !== undefined ? Number(courier_payout) : amount;
+    const computedFee = system_fee !== undefined ? Number(system_fee) : Math.round(amount * computedFeeRate * 100) / 100;
+
+    const newOrder = {
+      order_id: newOrderId,
+      client_name: String(client_name).trim(),
+      origin_city: String(origin_city).trim(),
+      dest_city: String(dest_city).trim(),
+      origin_address_masked: origin_address_masked || origin_city,
+      dest_address_masked: dest_address_masked || dest_city,
+      recipient_name: recipient_name || client_name,
+      recipient_phone_encrypted: recipient_phone_encrypted || '',
+      cargo_description: cargo_description || 'משלוח אקספרס',
+      vehicle_required: vehicle_required || 'קטנוע / אופנוע שליחויות',
+      payment_method: payMethod,
+      total_amount: amount,
+      courier_payout: payout,
+      system_fee: computedFee,
+      fee_rate: computedFeeRate,
+      status: status || 'ready_for_dispatch',
+      created_at: new Date().toISOString()
+    };
+
+    orders.push(newOrder);
+    writeDatabase(EXPRESS_ORDERS_FILE, orders);
+
+    res.status(201).json(newOrder);
+  } catch (error) {
+    res.status(500).json({ error: 'שגיאה ביצירת הזמנת אקספרס' });
+  }
+});
+
+// Update express order status
+app.put('/api/express/orders/:order_id/status', requireAdmin, (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!status) {
+      return res.status(400).json({ error: 'סטטוס הינו שדה חובה' });
+    }
+
+    const orders = readDatabase<any>(EXPRESS_ORDERS_FILE, []);
+    const orderIndex = orders.findIndex((o: any) => o.order_id === req.params.order_id);
+    if (orderIndex === -1) {
+      return res.status(404).json({ error: 'הזמנת אקספרס לא נמצאה' });
+    }
+
+    orders[orderIndex].status = status;
+    orders[orderIndex].updated_at = new Date().toISOString();
+
+    writeDatabase(EXPRESS_ORDERS_FILE, orders);
+    res.json(orders[orderIndex]);
+  } catch (error) {
+    res.status(500).json({ error: 'שגיאה בעדכון סטטוס ההזמנה' });
+  }
+});
+
 // Explicit JSON 404 handler for API routes (prevents Vite HTML fallback for API endpoints)
 app.all('/api/*', (req, res) => {
   res.status(404).json({ error: `נתיב API לא נמצא: ${req.method} ${req.originalUrl}` });
 });
 
 export default app;
+

@@ -1,0 +1,113 @@
+[
+  {
+    "id": "e9a0c24b-3269-42b7-a36a-24ad18a8cf71",
+    "scenario_code": "EXP_ENVELOPE_COURT",
+    "track": "express",
+    "cargo_type": "envelope",
+    "vehicle_type": "scooter",
+    "base_price_min": 80.00,
+    "base_price_max": 150.00,
+    "fee_credit_percent": 0.05,
+    "fee_cash_percent": 0.08,
+    "pii_restriction_level": "strict_mask",
+    "delivery_flow": {
+      "requires_hand_delivery": true,
+      "requires_signature": true,
+      "allowed_payment_methods": [
+        "cash_cod",
+        "credit_card",
+        "net_30"
+      ],
+      "suggested_fee_cash": 8.80,
+      "suggested_courier_net": 110.00
+    },
+    "created_at": "2026-10-14T00:00:00.000Z"
+  },
+  {
+    "id": "c1f7b82e-9d21-4f32-8ea7-b359f13e7921",
+    "scenario_code": "EXP_PARCEL_STANDARD",
+    "track": "express",
+    "cargo_type": "box",
+    "vehicle_type": "car",
+    "base_price_min": 80.00,
+    "base_price_max": 150.00,
+    "fee_credit_percent": 0.05,
+    "fee_cash_percent": 0.08,
+    "pii_restriction_level": "strict_mask",
+    "delivery_flow": {
+      "max_boxes": 3,
+      "requires_hand_delivery": false,
+      "allowed_payment_methods": [
+        "cash_cod",
+        "credit_card",
+        "net_30"
+      ]
+    },
+    "created_at": "2026-10-14T00:00:00.000Z"
+  },
+  {
+    "id": "a4d3e21c-5544-4899-b132-7fa918b8cc44",
+    "scenario_code": "EXP_VAN_OFFICE",
+    "track": "express",
+    "cargo_type": "office_boxes",
+    "vehicle_type": "van_3_5t",
+    "base_price_min": 140.00,
+    "base_price_max": 280.00,
+    "fee_credit_percent": 0.05,
+    "fee_cash_percent": 0.08,
+    "pii_restriction_level": "strict_mask",
+    "delivery_flow": {
+      "max_boxes": 10,
+      "requires_loading_help": true,
+      "allowed_payment_methods": [
+        "credit_card",
+        "cash_cod",
+        "net_30"
+      ]
+    },
+    "created_at": "2026-10-14T00:00:00.000Z"
+  },
+  {
+    "id": "7b2e98fa-1234-4567-89ab-cdef01234567",
+    "scenario_code": "HVY_APT_TRUCK_12T",
+    "track": "heavy",
+    "cargo_type": "furniture",
+    "vehicle_type": "truck_12t",
+    "base_price_min": 1800.00,
+    "base_price_max": 3600.00,
+    "fee_credit_percent": 0.15,
+    "fee_cash_percent": 0.15,
+    "pii_restriction_level": "strict_mask",
+    "delivery_flow": {
+      "includes_hydraulic_lift": true,
+      "typical_rooms": "3-5",
+      "allowed_payment_methods": [
+        "credit_card",
+        "bank_transfer",
+        "cash_deposit"
+      ]
+    },
+    "created_at": "2026-10-14T00:00:00.000Z"
+  },
+  {
+    "id": "9c3d4e5f-5678-4901-abcd-ef0123456789",
+    "scenario_code": "CRANE_LADDER_HOIST",
+    "track": "crane",
+    "cargo_type": "heavy_hoist",
+    "vehicle_type": "crane",
+    "base_price_min": 350.00,
+    "base_price_max": 450.00,
+    "fee_credit_percent": 0.15,
+    "fee_cash_percent": 0.15,
+    "pii_restriction_level": "strict_mask",
+    "delivery_flow": {
+      "max_floor": 18,
+      "hourly_rate": 400.00,
+      "allowed_payment_methods": [
+        "credit_card",
+        "bank_transfer"
+      ]
+    },
+    "created_at": "2026-10-14T00:00:00.000Z"
+  }
+]
