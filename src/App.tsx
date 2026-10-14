@@ -22,8 +22,10 @@ import LegalModals, { LegalModalType } from './components/LegalModals';
 import AIConcierge from './components/AIConcierge';
 import { MoveRequest } from './types';
 
+export type AppView = 'landing' | 'quote' | 'driver' | 'admin' | 'tracking' | 'feedback' | 'driver-register' | 'about' | 'availability';
+
 export default function App() {
-  const [view, setView] = useState<'landing' | 'quote' | 'driver' | 'admin' | 'tracking' | 'feedback' | 'driver-register' | 'about'>('landing');
+  const [view, setView] = useState<AppView>('landing');
   const [selectedMoveId, setSelectedMoveId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -97,7 +99,11 @@ export default function App() {
     }
   }, []);
 
-  const handleNavigate = (targetView: 'landing' | 'quote' | 'driver' | 'admin' | 'tracking' | 'feedback' | 'driver-register' | 'about', moveId: string | null = null) => {
+  const handleNavigate = (targetView: AppView, moveId: string | null = null) => {
+    if (targetView === 'availability') {
+      setView('driver');
+      return;
+    }
     if (targetView === 'admin' && !isAdminLoggedIn) {
       setAdminModalOpen(true);
       return;

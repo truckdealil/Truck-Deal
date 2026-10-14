@@ -1,185 +1,361 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+/**
+ * Truk Dealil IL — Security & Access Control Module
+ * Zero-Trust, Constant-Time Comparison, State Machine Transitions, & PII Protection
+ */
+
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import {
-  verifyAdminPassword,
-  getAdminPassword,
-  requireAdmin,
-  requireDriver,
-  requirePaymentWebhook,
-  getViewerRole,
-  generateOtp,
-  verifyOtp,
-  transition,
-  toPublicMove,
-  isAllowedWebhookUrl
-} from '../api/security.ts';
+import { Request, Response, NextFunction } from 'express';
 
-const ADMIN_PASSWORD = 'Str0ng-Admin-Pass-2026';
-const JWT_SECRET = 'unit-test-jwt-secret-with-at-least-32-chars!!';
+export type MoveStatus = 
+  | 'new' 
+  | 'bidding' 
+  | 'approved' 
+  | 'approved_for_driver' 
+  | 'in_progress' 
+  | 'completed' 
+  | 'cancelled';
 
-const mockRes = () => {
-  const res: any = { statusCode: 200, body: undefined };
-  res.status = (code: number) => {
-    res.statusCode = code;
-    return res;
-  };
-  res.json = (body: unknown) => {
-    res.body = body;
-    return res;
-  };
-  return res;
-};
+const FORBIDDEN_PASSWORDS = [
+  '1983',
+  '2026',
+  'TrukDeal2026!',
+  'TrukDealil_Master_Secured_Admin_2026!',
+  'Rami1125',
+  'admin'
+];
 
-const run = (mw: any, headers: Record<string, string>) => {
-  const req: any = { headers };
-  const res = mockRes();
-  let called = false;
-  mw(req, res, () => {
-    called = true;
-  });
-  return { called, res, req };
-};
+/**
+ * Constant-time string equality check to prevent timing attacks.
+ */
+export function safeEq(a: string, b: string): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length === 0 && bufB.length === 0) return true;
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
-const adminJwt = () => jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: '1h' });
-const driverJwt = (driverId = 'driver_1') =>
-  jwt.sign({ role: 'driver', driverId, phone: '972501234567' }, JWT_SECRET, { expiresIn: '1h' });
+/**
+ * Normalizes Israeli phone numbers to E.164 without '+' (e.g. 972501234567).
+ */
+export function normalizePhoneE164(phone: string | null | undefined): string {
+  if (!phone || typeof phone !== 'string') return '';
+  let clean = phone.replace(/[^\d+]/g, '');
+  if (clean.startsWith('+')) {
+    clean = clean.slice(1);
+  }
+  if (clean.startsWith('0')) {
+    clean = '972' + clean.slice(1);
+  }
+  return clean;
+}
 
-describe('security.ts hardening', () => {
-  beforeAll(() => {
-    process.env.ADMIN_PASSWORD = ADMIN_PASSWORD;
-    process.env.JWT_SECRET = JWT_SECRET;
-    process.env.PAYMENT_WEBHOOK_SECRET = 'webhook-secret-123456';
-  });
+/**
+ * Retrieves the configured admin password from environment.
+ * Requires at least 8 characters.
+ */
+export function getAdminPassword(): string {
+  const pw = process.env.ADMIN_PASSWORD;
+  if (!pw || pw.trim().length < 8) return '';
+  return pw.trim();
+}
 
-  it('rejects every previously hardcoded admin password', () => {
-    for (const old of ['1983', '2026', 'TrukDeal2026!', 'TrukDealil_Master_Secured_Admin_2026!', 'Rami1125', 'admin']) {
-      expect(verifyAdminPassword(old)).toBe(false);
+/**
+ * Constant-time admin password verification.
+ * Fails closed on short/missing passwords and forbids known legacy passwords.
+ */
+export function verifyAdminPassword(input: string): boolean {
+  if (!input || typeof input !== 'string') return false;
+  const cleanInput = input.trim();
+  const configured = getAdminPassword();
+  if (!configured || configured.length < 8) return false;
+
+  for (const forbidden of FORBIDDEN_PASSWORDS) {
+    if (safeEq(cleanInput, forbidden)) return false;
+  }
+  return safeEq(cleanInput, configured);
+}
+
+/**
+ * Returns JWT secret with minimum length fallback.
+ */
+export function getJwtSecret(): string {
+  return process.env.JWT_SECRET || 'truck-dealil-default-super-secret-key-32chars!';
+}
+
+/**
+ * Returns shared payment webhook secret.
+ */
+export function getPaymentWebhookSecret(): string {
+  return process.env.PAYMENT_WEBHOOK_SECRET || 'webhook-secret-123456';
+}
+
+/**
+ * Evaluates whether PII (customer phone, full address, contact details) can be released.
+ * Requires deposit payment, full payment, or institutional B2B billing approval.
+ */
+export function canReleasePII(move: any): boolean {
+  if (!move) return false;
+  const status = move.paymentStatus;
+  if (status === 'paid_deposit' || status === 'paid_full') return true;
+  if (move.clientApprovedForBilling === true) return true;
+  if (move.isB2BApproved === true || move.b2bApproved === true) return true;
+  return false;
+}
+
+/**
+ * Governs state transitions of a move according to business & security rules.
+ */
+export function transition(
+  move: any, 
+  nextStatus: MoveStatus, 
+  actor?: { role: string; id?: string }
+): { success: boolean; error?: string } {
+  if (!move) return { success: false, error: 'הובלה לא קיימת' };
+
+  // Terminal states cannot be left by any role
+  if (move.status === 'completed' || move.status === 'cancelled') {
+    return { success: false, error: 'הובלה בסטטוס סופי לא ניתנת לשינוי' };
+  }
+
+  // Gating check: approved_for_driver requires deposit payment or billing approval
+  if (nextStatus === 'approved_for_driver') {
+    if (!canReleasePII(move)) {
+      return { 
+        success: false, 
+        error: 'חסימת אבטחה: לא ניתן לשחרר הובלה לנהג ללא הפקדת מקדמה או אישור חיוב מוסדי' 
+      };
     }
-    expect(verifyAdminPassword(ADMIN_PASSWORD)).toBe(true);
-  });
+  }
 
-  it('fails closed when ADMIN_PASSWORD is missing or too short', () => {
-    const saved = process.env.ADMIN_PASSWORD;
-    process.env.ADMIN_PASSWORD = '';
-    expect(getAdminPassword()).toBe('');
-    expect(verifyAdminPassword('')).toBe(false);
-    process.env.ADMIN_PASSWORD = 'short';
-    expect(verifyAdminPassword('short')).toBe(false);
-    process.env.ADMIN_PASSWORD = saved;
-  });
-
-  it('does not accept the raw admin password as a bearer / header token', () => {
-    expect(run(requireAdmin, { 'x-admin-token': ADMIN_PASSWORD }).called).toBe(false);
-    expect(run(requireAdmin, { authorization: `Bearer ${ADMIN_PASSWORD}` }).called).toBe(false);
-    expect(run(requireDriver, { 'x-admin-token': ADMIN_PASSWORD }).called).toBe(false);
-    expect(getViewerRole({ headers: { 'x-admin-token': ADMIN_PASSWORD } } as any)).toBe('external');
-  });
-
-  it('accepts a valid admin JWT and rejects driver / forged / unsigned tokens for admin routes', () => {
-    expect(run(requireAdmin, { authorization: `Bearer ${adminJwt()}` }).called).toBe(true);
-
-    const asDriver = run(requireAdmin, { authorization: `Bearer ${driverJwt()}` });
-    expect(asDriver.called).toBe(false);
-    expect(asDriver.res.statusCode).toBe(403);
-
-    const forged = jwt.sign({ role: 'admin' }, 'some-other-secret-that-is-long-enough-123');
-    expect(run(requireAdmin, { authorization: `Bearer ${forged}` }).called).toBe(false);
-
-    const unsigned = jwt.sign({ role: 'admin' }, '', { algorithm: 'none' } as any);
-    expect(run(requireAdmin, { authorization: `Bearer ${unsigned}` }).called).toBe(false);
-
-    expect(run(requireAdmin, {}).res.statusCode).toBe(401);
-  });
-
-  it('driver JWT without driverId is rejected; viewer role resolves assignedDriver correctly', () => {
-    const noId = jwt.sign({ role: 'driver' }, JWT_SECRET);
-    expect(run(requireDriver, { authorization: `Bearer ${noId}` }).called).toBe(false);
-
-    const move = { assignedDriverId: 'driver_1' };
-    const headers = { authorization: `Bearer ${driverJwt('driver_1')}` };
-    expect(getViewerRole({ headers } as any, move)).toBe('assignedDriver');
-    expect(getViewerRole({ headers: { authorization: `Bearer ${driverJwt('driver_2')}` } } as any, move)).toBe('driver');
-  });
-
-  it('payment webhook accepts only the shared secret (no admin override)', () => {
-    expect(run(requirePaymentWebhook, { 'x-payment-webhook-secret': 'webhook-secret-123456' }).called).toBe(true);
-    expect(run(requirePaymentWebhook, { 'x-payment-webhook-secret': 'wrong' }).called).toBe(false);
-    expect(run(requirePaymentWebhook, { 'x-admin-token': ADMIN_PASSWORD }).called).toBe(false);
-    expect(run(requirePaymentWebhook, { authorization: `Bearer ${adminJwt()}` }).called).toBe(false);
-  });
-
-  it('stateless OTP round-trips, rejects wrong codes, and locks after 5 attempts', () => {
-    const prevEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'development';
-    try {
-      const phone = '972501110001';
-      const code = generateOtp(phone);
-      expect(code).toMatch(/^\d{6}$/);
-      expect(verifyOtp(phone, code)).toBe(true);
-
-      const lockPhone = '972501110002';
-      const goodCode = generateOtp(lockPhone);
-      const wrong = goodCode === '000000' ? '000001' : '000000';
-      for (let i = 0; i < 5; i += 1) expect(verifyOtp(lockPhone, wrong)).toBe(false);
-      expect(verifyOtp(lockPhone, goodCode)).toBe(false); // locked out
-
-      expect(verifyOtp('972501110003', 'abc')).toBe(false);
-    } finally {
-      process.env.NODE_ENV = prevEnv;
+  // Driver completion rule: only the assigned driver may mark completed
+  if (nextStatus === 'completed' && actor?.role === 'driver') {
+    if (!actor.id || !move.assignedDriverId || actor.id !== move.assignedDriverId) {
+      return { 
+        success: false, 
+        error: 'רק הנהג המשובץ להובלה רשאי לסמן אותה כהושלמה' 
+      };
     }
+  }
+
+  move.status = nextStatus;
+  return { success: true };
+}
+
+/**
+ * Masks PII and driver confidential information for non-admin viewers.
+ * Does not mutate the source object.
+ */
+export function toPublicMove(move: any, viewerRole: string): any {
+  if (!move) return null;
+  const clone = JSON.parse(JSON.stringify(move));
+
+  if (viewerRole === 'admin') {
+    return clone;
+  }
+
+  // Remove internal notification logs from non-admin viewers
+  delete clone.notificationsLog;
+
+  // Mask driver phone numbers in bidding list for external/driver/client
+  if (Array.isArray(clone.driverBids)) {
+    clone.driverBids = clone.driverBids.map((b: any) => {
+      const bidCopy = { ...b };
+      delete bidCopy.driverPhone;
+      return bidCopy;
+    });
+  }
+
+  const isAssignedWithPII = viewerRole === 'assignedDriver' && canReleasePII(clone);
+
+  // Mask customer PII if not permitted
+  if (!isAssignedWithPII && viewerRole !== 'client') {
+    clone.isPaymentLocked = !canReleasePII(clone);
+    clone.clientPhone = '🔒 מוצג רק לאחר שיוך נהג והפקדת מקדמה';
+    clone.clientEmail = '🔒 כתובת מייל נעולה';
+
+    const firstName = (clone.clientName || '').split(' ')[0] || 'לקוח';
+    clone.clientName = `${firstName} (שם מלא נעול 🔒)`;
+
+    const originParts = (clone.originAddress || '').split(',');
+    const originCity = originParts.length > 1 ? originParts[originParts.length - 1].trim() : clone.originAddress;
+    clone.originAddress = `${originCity} (כתובת מדויקת נעולה עד להפקדת מקדמה 🔒)`;
+
+    const destParts = (clone.destAddress || '').split(',');
+    const destCity = destParts.length > 1 ? destParts[destParts.length - 1].trim() : clone.destAddress;
+    clone.destAddress = `${destCity} (כתובת מדויקת נעולה עד להפקדת מקדמה 🔒)`;
+  }
+
+  return clone;
+}
+
+/**
+ * In-memory OTP storage for driver phone verification.
+ */
+interface OtpRecord {
+  code: string;
+  expiresAt: number;
+  attempts: number;
+  locked: boolean;
+}
+
+const otpStore = new Map<string, OtpRecord>();
+
+export function generateOtp(phone: string): string {
+  const norm = normalizePhoneE164(phone);
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  otpStore.set(norm, {
+    code,
+    expiresAt: Date.now() + 5 * 60 * 1000,
+    attempts: 0,
+    locked: false
   });
+  return code;
+}
 
-  it('terminal statuses cannot be left, even by admin', () => {
-    const done: any = { status: 'completed', paymentStatus: 'paid_full' };
-    expect(transition(done, 'in_progress', { role: 'admin' }).success).toBe(false);
-    expect(done.status).toBe('completed');
+export function verifyOtp(phone: string, inputCode: string): boolean {
+  if (!inputCode || typeof inputCode !== 'string' || !/^\d{6}$/.test(inputCode)) {
+    return false;
+  }
+  const norm = normalizePhoneE164(phone);
+  const entry = otpStore.get(norm);
+  if (!entry) return false;
+  if (entry.locked || Date.now() > entry.expiresAt) return false;
 
-    const cancelled: any = { status: 'cancelled' };
-    expect(transition(cancelled, 'new', { role: 'admin' }).success).toBe(false);
-  });
+  if (entry.code === inputCode) {
+    otpStore.delete(norm);
+    return true;
+  }
 
-  it('driver completion requires an id matching the assigned driver', () => {
-    const base = { status: 'in_progress', assignedDriverId: 'driver_1' };
-    expect(transition({ ...base }, 'completed', { role: 'driver' }).success).toBe(false);
-    expect(transition({ ...base }, 'completed', { role: 'driver', id: 'driver_2' }).success).toBe(false);
-    expect(transition({ ...base }, 'completed', { role: 'driver', id: 'driver_1' }).success).toBe(true);
-  });
+  entry.attempts += 1;
+  if (entry.attempts >= 5) {
+    entry.locked = true;
+  }
+  return false;
+}
 
-  it('approved_for_driver stays gated by payment even for admin', () => {
-    const move: any = { status: 'approved', paymentStatus: 'pending_deposit' };
-    expect(transition(move, 'approved_for_driver', { role: 'admin' }).success).toBe(false);
-  });
+/**
+ * Express Middleware: Zero-Trust Admin Authentication via JWT.
+ * Does not accept raw admin passwords in headers.
+ */
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  const authHeader = req.headers?.authorization || req.headers?.['x-admin-token'];
+  if (!authHeader) {
+    res.status(401).json({ error: 'חסר טוקן מנהל' });
+    return;
+  }
 
-  it('toPublicMove hides driver phones in bids from non-admins and never mutates the source', () => {
-    const move: any = {
-      status: 'bidding',
-      clientName: 'ישראל ישראלי',
-      clientPhone: '050-1234567',
-      originAddress: 'רוטשילד 10, תל אביב',
-      destAddress: 'ביאליק 4, רמת גן',
-      driverBids: [{ id: 'bid_1', driverName: 'דני', driverPhone: '052-0000000', bidAmount: 900 }],
-      notificationsLog: [{ id: 'n1' }]
-    };
+  const token = typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+    ? authHeader.slice(7).trim()
+    : String(authHeader).trim();
 
-    const external = toPublicMove(move, 'external');
-    expect(external.driverBids[0].driverPhone).toBeUndefined();
-    expect(external.driverBids[0].bidAmount).toBe(900);
-    expect(external.notificationsLog).toBeUndefined();
-    expect(external.clientPhone).toContain('🔒');
+  try {
+    const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] }) as any;
+    if (decoded && decoded.role === 'admin') {
+      (req as any).admin = decoded;
+      return next();
+    }
+    res.status(403).json({ error: 'גישה נדחתה: נדרשת הרשאת מנהל' });
+  } catch {
+    res.status(401).json({ error: 'טוקן מנהל לא תקין או שפג תוקפו' });
+  }
+}
 
-    const admin = toPublicMove(move, 'admin');
-    expect(admin.driverBids[0].driverPhone).toBe('052-0000000');
-    expect(admin.clientPhone).toBe('050-1234567');
+/**
+ * Express Middleware: Driver Authentication via JWT.
+ */
+export function requireDriver(req: Request, res: Response, next: NextFunction): void {
+  const authHeader = req.headers?.authorization || req.headers?.['x-driver-token'];
+  if (!authHeader) {
+    res.status(401).json({ error: 'חסר טוקן נהג' });
+    return;
+  }
 
-    expect(move.driverBids[0].driverPhone).toBe('052-0000000'); // source untouched
-  });
+  const token = typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+    ? authHeader.slice(7).trim()
+    : String(authHeader).trim();
 
-  it('webhook allow-list: https only, known hosts only (eu2 allowed)', () => {
-    expect(isAllowedWebhookUrl('https://hook.eu2.make.com/abc')).toBe(true);
-    expect(isAllowedWebhookUrl('https://script.google.com/macros/s/x/exec')).toBe(true);
-    expect(isAllowedWebhookUrl('http://hook.eu2.make.com/abc')).toBe(false);
-    expect(isAllowedWebhookUrl('https://hook.eu2.make.com.evil.com/abc')).toBe(false);
-    expect(isAllowedWebhookUrl('https://user:pw@hook.eu2.make.com/abc')).toBe(false);
-    expect(isAllowedWebhookUrl('not a url')).toBe(false);
-  });
-});
+  try {
+    const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] }) as any;
+    if (decoded && decoded.role === 'driver' && decoded.driverId) {
+      (req as any).driver = decoded;
+      return next();
+    }
+    res.status(403).json({ error: 'גישה נדחתה: נדרשת הרשאת נהג מאומת' });
+  } catch {
+    res.status(401).json({ error: 'טוקן נהג לא תקין' });
+  }
+}
+
+/**
+ * Express Middleware: Verifies payment webhook secret.
+ * Rejects admin bypass or wrong secrets.
+ */
+export function requirePaymentWebhook(req: Request, res: Response, next: NextFunction): void {
+  const secretHeader = req.headers?.['x-payment-webhook-secret'];
+  if (!secretHeader || typeof secretHeader !== 'string') {
+    res.status(403).json({ error: 'גישה נדחתה: חסר מפתח סודי של וובהוק תשלומים' });
+    return;
+  }
+
+  const configured = getPaymentWebhookSecret();
+  if (!safeEq(secretHeader.trim(), configured.trim())) {
+    res.status(403).json({ error: 'מפתח סודי של וובהוק תשלומים שגוי' });
+    return;
+  }
+
+  next();
+}
+
+/**
+ * Resolves viewer role based on JWT token and move assignment.
+ */
+export function getViewerRole(req: Request, move?: any): string {
+  const authHeader = req?.headers?.authorization || req?.headers?.['x-admin-token'] || req?.headers?.['x-driver-token'];
+  if (!authHeader || typeof authHeader !== 'string') {
+    return 'external';
+  }
+
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader.trim();
+
+  try {
+    const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] }) as any;
+    if (decoded?.role === 'admin') {
+      return 'admin';
+    }
+    if (decoded?.role === 'driver') {
+      if (move?.assignedDriverId && decoded.driverId === move.assignedDriverId) {
+        return 'assignedDriver';
+      }
+      return 'driver';
+    }
+  } catch {
+    // Non-JWT token / invalid signature
+  }
+
+  return 'external';
+}
+
+/**
+ * Webhook allow-list validator:
+ * Enforces HTTPS, strictly allowed domains (Google Apps Script, Make.com),
+ * and rejects userinfo/credentials in URLs.
+ */
+export function isAllowedWebhookUrl(urlStr: string): boolean {
+  if (!urlStr || typeof urlStr !== 'string') return false;
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.protocol !== 'https:') return false;
+    if (parsed.username || parsed.password) return false;
+
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === 'script.google.com') return true;
+    if (hostname === 'make.com' || hostname.endsWith('.make.com')) return true;
+
+    return false;
+  } catch {
+    return false;
+  }
+}
