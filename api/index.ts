@@ -268,40 +268,64 @@ if (process.env.GEMINI_API_KEY) {
   }
 }
 
-// Call Gemini with Fallback
+// Call Gemini with Robust Multi-Model Failover & Exponential Backoff
 const callGeminiWithFallback = async (
   contents: string, 
-  primaryModel: string = 'gemini-3.8-flash', 
-  fallbackModel: string = 'gemini-3.1-flash-lite'
+  primaryModel: string = 'gemini-3.1-flash-lite', 
+  fallbackModel: string = 'gemini-3.8-flash'
 ) => {
   if (!ai) {
     throw new Error('Gemini client not initialized');
   }
 
-  const generateWithTimeout = async (model: string, timeoutMs: number = 10000) => {
-    let timeoutId: any;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() => reject(new Error(`Gemini timeout after ${timeoutMs}ms`)), timeoutMs);
-    });
-    try {
-      const result = await Promise.race([
-        ai!.models.generateContent({ model, contents }),
-        timeoutPromise
-      ]);
-      clearTimeout(timeoutId);
-      return result;
-    } catch (err) {
-      clearTimeout(timeoutId);
-      throw err;
-    }
-  };
+  // Model cascade: prioritize fast available lite model, then flash, then latest alias
+  const candidateModels = Array.from(new Set([
+    primaryModel,
+    fallbackModel,
+    'gemini-flash-latest',
+    'gemini-3.1-flash-lite'
+  ]));
 
-  try {
-    return await generateWithTimeout(primaryModel, 10000);
-  } catch (err: any) {
-    console.warn(`Primary Gemini model (${primaryModel}) failed:`, err?.message || err);
-    return await generateWithTimeout(fallbackModel, 10000);
+  let lastError: any = null;
+
+  for (const model of candidateModels) {
+    // Attempt up to 2 tries per model to handle temporary 503 / demand spikes
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      let timeoutId: any;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(`Gemini timeout after 12000ms on ${model}`)), 12000);
+      });
+
+      try {
+        const result = await Promise.race([
+          ai!.models.generateContent({ model, contents }),
+          timeoutPromise
+        ]);
+        clearTimeout(timeoutId);
+        if (result && result.text) {
+          return result;
+        }
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        lastError = err;
+        const status = err?.status || err?.code || '';
+        const msg = err?.message || String(err);
+        const isTransient = status === 503 || status === 429 || msg.includes('503') || msg.includes('high demand') || msg.includes('timeout');
+
+        console.warn(`[Gemini SDK] ${model} attempt ${attempt}/2 failed (${status || 'error'}): ${msg.slice(0, 80)}`);
+
+        // If transient demand spike, backoff briefly and retry
+        if (isTransient && attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, 450 * attempt));
+        } else {
+          // Move to next candidate model
+          break;
+        }
+      }
+    }
   }
+
+  throw lastError || new Error('All candidate Gemini models failed');
 };
 
 // Webhook Settings Helpers
